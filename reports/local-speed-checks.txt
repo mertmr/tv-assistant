@@ -1,0 +1,21 @@
+PASS WebSocket delta payload excludes stream and includes previous response
+PASS WebSocket new chain sends full context
+PASS shared event accumulator restores terminal output in order
+PASS shared accumulator preserves supplied terminal output without duplication
+PASS shared accumulator rejects failed, incomplete, error, cancelled
+PASS SSE completion and missing completion
+PASS plan scalar parameters and nested references
+PASS plan rejects recursion, forward refs, unauthorized tools and oversize
+PASS plan stops on failed action and cancellation
+PASS plan stops on partial keyboard delivery
+PASS successful plan keeps step count and parameters
+PASS fresh labels reject ambiguity, disabled and password fields
+PASS native targets exclude zero-size bounds and noneditable typing
+PASS scope guards reject changed app/origin and accept normalized HTTPS ports
+PASS reusable plans require scoped clicks and terminal verification
+PASS microphone probe distinguishes no samples from zero PCM
+PASS microphone PCM handles both full-scale extremes without overflow
+PASS microphone levels include quiet chunks, zeros and all samples
+PASS microphone level validation rejects invalid buffer bounds and rates
+PASS microphone source preferences are bounded and cycle safely
+20 passed, 0 failed (offline JVM checks; no device)

@@ -1,0 +1,20 @@
+build/
+dist/
+__pycache__/
+*.pyc
+.DS_Store
+*.keystore
+*.jks
+
+# Local development context and machine-specific build logs.
+/AGENTS.md
+/CONTINUATION.md
+/reports/build-*.txt
+
+# Local account configuration and secrets.
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.key

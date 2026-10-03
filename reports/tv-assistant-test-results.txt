@@ -1,0 +1,86 @@
+PASS vision input includes a real image item
+PASS vision retains only latest image while preserving text
+PASS vision rejects non-screenshot remote images
+PASS vision maps image pixels to display pixels
+PASS vision rejects coordinates outside screenshot
+PASS vision rejects changed app
+PASS vision rejects stale snapshot ID
+PASS vision consumes snapshot after an action
+PASS vision maps both swipe endpoints
+PASS YouTube public search parses channels and videos
+PASS YouTube missing metadata is explicit failure
+PASS YouTube invalid video IDs rejected
+PASS YouTube invalid channel IDs rejected before networking
+PASS YouTube upload feed orders by publication date
+PASS YouTube empty upload feed is explicit failure
+PASS YouTube feed canonicalizes its unprefixed root channel ID
+PASS YouTube XML entities rejected
+PASS YouTube public channel discovery works on TV
+PASS YouTube live upload feed returns exact playable ID
+PASS connected requests always use AI
+PASS explicit local-only mode uses local routing
+PASS disconnected basic commands use local routing
+PASS forced AI never uses local routing
+PASS arithmetic precedence
+PASS arithmetic unary and decimals
+PASS arithmetic zero division rejected
+PASS arithmetic executable text rejected
+PASS arithmetic unmatched parentheses rejected
+PASS arithmetic trailing tokens rejected
+PASS ASR incomplete Stremio request
+PASS Stremio find title
+PASS spoken website
+PASS volume percent
+PASS timer units
+PASS weather routing
+PASS ambiguous command leaves AI choice
+PASS function schemas are well formed
+PASS installed app discovery
+PASS device information
+PASS read-only volume
+PASS missing arguments rejected
+PASS wrong argument type rejected
+PASS extra arguments rejected
+PASS unknown tool rejected
+PASS invalid enum rejected
+PASS invalid volume range rejected
+PASS file URL rejected
+PASS intent URL rejected
+PASS auth URL excluded from AI browser
+PASS password preference rejected
+PASS bad media identifier rejected
+PASS sensitive action detection
+PASS SSE completed
+PASS SSE restores streamed tool calls from empty terminal output
+PASS SSE preserves completed output without duplication
+PASS SSE abrupt ending rejected
+PASS SSE late usage failure rejected
+PASS SSE incomplete rejected
+PASS SSE stop respected
+PASS PKCE RFC challenge
+PASS OIDC valid signed identity
+PASS OIDC wrong audience rejected
+PASS OIDC wrong nonce rejected
+PASS OIDC tampered signature rejected
+PASS OIDC expired identity rejected
+PASS OIDC wrong issuer rejected
+PASS plan scope required
+PASS readable local responses
+PASS playback permission works
+PASS ChatGPT plan namespace contract
+PASS stopped inference never opens a request
+PASS large tool output stays valid JSON
+PASS internal browser local route
+PASS real WebView page extraction
+PASS browser password redaction
+PASS browser stale snapshot rejected
+PASS browser password typing rejected
+PASS browser text entry
+PASS browser disabled click rejected
+PASS browser click
+PASS browser action verified in DOM
+PASS browser node filtering
+PASS tool budget enforced
+
+83 passed, 0 failed
+

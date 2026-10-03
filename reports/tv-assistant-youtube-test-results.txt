@@ -1,0 +1,18 @@
+PASS YouTube public search parses channels and videos
+PASS YouTube missing metadata is explicit failure
+PASS YouTube invalid video IDs rejected
+PASS YouTube invalid channel IDs rejected before networking
+PASS YouTube upload feed orders by publication date
+PASS YouTube empty upload feed is explicit failure
+PASS YouTube feed canonicalizes its unprefixed root channel ID
+PASS YouTube XML entities rejected
+PASS YouTube public channel discovery works on TV
+PASS YouTube live upload feed returns exact playable ID
+AI lookup answer: Latest upload on **America’s Test Kitchen**:
+
+- **Title:** “Burn Your Bell Peppers for Maximum Flavor”
+- **Publication date:** **October 1, 2026** at **16:29:57 UTC**
+PASS AI chooses YouTube channel and latest-upload tools without playback
+
+11 passed, 0 failed
+

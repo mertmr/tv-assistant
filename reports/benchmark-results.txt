@@ -1,0 +1,21 @@
+AI · request 1/12 · tools 0/16
+AI · request 2/12 · tools 1/16
+AI · request 3/12 · tools 2/16
+AI · request 4/12 · tools 3/16
+Benchmark elapsed_ms: 17960
+→ device info
+✓ device info · Amazon AFTKA
+Android 9
+Network: connected
+Screen navigation: not connected
+→ clock
+✓ clock · 2026-10-02 18:29:12 GMT+04:00
+→ calculate
+✓ calculate · Result: 56.0
+Answer: - TV: Amazon AFTKA, Android 9, online
+- Time: October 2, 2026, 6:29 PM (GMT+04:00)
+- 7 × 8 = **56**
+PASS live read-only AI benchmark
+
+1 passed, 0 failed
+

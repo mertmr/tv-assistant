@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="dev.mert.tvassistant.tests">
+ <uses-sdk android:minSdkVersion="23" android:targetSdkVersion="28" />
+ <application android:label="TV Assistant tests" />
+ <instrumentation android:name="dev.mert.tvassistant.TestRunner" android:targetPackage="dev.mert.tvassistant" android:label="TV Assistant device tests" />
+</manifest>
