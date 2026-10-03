@@ -43,6 +43,18 @@ final class LocalFormatter {
     if (result.has("requested"))
       return "Requested " + result.optString("requested").replace('_', ' ') + ".";
     switch (tool) {
+      case "web_page":
+        return result.optBoolean("loading") ? "Public page is loading."
+            : result.optString("title") + "\n" + result.optString("url") + "\n"
+                + items(result.optJSONArray("nodes"), "label", "Page controls and links", null);
+      case "keyboard_keys":
+        return "Delivered " + result.optInt("keys_delivered") + "/"
+            + result.optInt("keys_requested") + " keys; inspect the search results.";
+      case "action_plan":
+        return (result.optBoolean("stopped_early") ? "Plan stopped: " : "Plan completed: ")
+            + result.optInt("completed_steps") + "/" + result.optInt("requested_steps") + " steps."
+            + (result.has("cached_workflow") ? "\nLearned workflow: " + result.optString("cached_workflow") : "")
+            + (result.has("cache_note") ? "\nWorkflow not saved: " + result.optString("cache_note") : "");
       case "clock":
         return result.optString("time");
       case "calculate":

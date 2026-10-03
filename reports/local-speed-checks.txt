@@ -1,3 +1,8 @@
+PASS automatic learning replaces literals and derives verification for a new query
+PASS automatic learning accepts parameterized searches without retaining their values
+PASS automatic learning rejects failed, unverified and unrelated result headings
+PASS automatic learning rejects mixed origins, field-value verification and query-bearing controls
+PASS scroll counts reject fractions and out-of-range values before any actions
 PASS WebSocket delta payload excludes stream and includes previous response
 PASS WebSocket new chain sends full context
 PASS shared event accumulator restores terminal output in order
@@ -13,9 +18,22 @@ PASS fresh labels reject ambiguity, disabled and password fields
 PASS native targets exclude zero-size bounds and noneditable typing
 PASS scope guards reject changed app/origin and accept normalized HTTPS ports
 PASS reusable plans require scoped clicks and terminal verification
+PASS plan preflight rejects invalid later literals and missing parameters
+PASS nested keyboard arguments are checked before delivery
+PASS deferred references are validated after resolution
+PASS incorrect text verification stops dependent actions
+PASS WebSocket payload preserves source and rejects invalid continuation cursor
+PASS native typed field follows identity instead of the old value label
+PASS public page actions can be batched with fresh result references
+PASS cached public searches require parameterized typing and final verification
+PASS readiness excludes field values and snapshot IDs but detects real results
+PASS public origins enforce the same fresh scope guard
+PASS parameter shorthand resolves and preflights instead of typing a placeholder
+PASS large plans retain final observed links and every step status
+PASS cached public searches cannot freeze a previous query's verification
 PASS microphone probe distinguishes no samples from zero PCM
 PASS microphone PCM handles both full-scale extremes without overflow
 PASS microphone levels include quiet chunks, zeros and all samples
 PASS microphone level validation rejects invalid buffer bounds and rates
 PASS microphone source preferences are bounded and cycle safely
-20 passed, 0 failed (offline JVM checks; no device)
+38 passed, 0 failed (offline JVM checks; no device)

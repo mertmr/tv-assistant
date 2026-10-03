@@ -91,7 +91,21 @@ PASS browser click
 PASS browser action verified in DOM
 PASS batched real WebView actions and verified workflow reuse
 PASS browser node filtering
+PASS isolated public page extracts DOM without launching an activity
+PASS public TV viewport exposes desktop search controls
+PASS public typing dispatches input and change and yields a real result link
+PASS public stale, password, and disabled actions are rejected
+PASS public SVG controls are observed and clicked with fresh identity
+Public search batch: 730 ms; fixture delay650ms
+PASS public search batches fresh actions and waits for delayed real results
+PASS cached public search uses new parameters without retaining typed values
+PASS successful literal public searches learn without an explicit cache name
+PASS automatically learned searches replay with query only and verify fresh results
+PASS public search drift and missing parameters stop before later actions
+PASS public label actions reject changed origin and ambiguity
+PASS public readiness stops promptly and cannot verify an input value
+PASS raw public page steps batch observed snapshots without extra model calls
+PASS public readiness cancellation interrupts local polling
 PASS tool budget enforced
 
-94 passed, 0 failed
-
+108 passed, 0 failed

@@ -21,8 +21,18 @@ PY
 "$test_tools/apksigner" sign --ks "$app_build/debug.keystore" --ks-key-alias tvassistant --ks-pass pass:android --key-pass pass:android --out "$test_build/tests.apk" "$test_build/aligned.apk"
 test_adb_port="${TV_ADB_PORT:-5038}"
 test_device="${TV_DEVICE:-192.168.1.104:5555}"
+if [[ "${TV_TEST_GROUP:-}" == emulator* ]]; then
+ [[ "$test_device" == emulator-* ]] || { printf 'Refusing emulator tests on a physical device.\n'; exit 1; }
+ [[ "$(adb -P "$test_adb_port" -s "$test_device" shell getprop ro.kernel.qemu | tr -d '\r')" == "1" ]] || exit 1
+fi
 adb -P "$test_adb_port" -s "$test_device" install -r "$test_build/tests.apk"
-if [ "${TV_TEST_GROUP:-}" = "benchmark" ]; then
+if [ "${TV_TEST_GROUP:-}" = "emulator-native" ]; then
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/emulator-native-results.txt}"
+ adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group emulator-native dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+elif [ "${TV_TEST_GROUP:-}" = "emulator" ]; then
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/emulator-api34-results.txt}"
+ adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group emulator dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+elif [ "${TV_TEST_GROUP:-}" = "benchmark" ]; then
  test_result="$workspace_root/reports/benchmark-results.txt"
  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group benchmark dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
 elif [ "${TV_TEST_GROUP:-}" = "youtube" ]; then

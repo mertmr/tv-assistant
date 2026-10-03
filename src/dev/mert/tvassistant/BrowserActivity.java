@@ -101,9 +101,9 @@ public final class BrowserActivity extends Activity {
 
   static final String DOM =
       "(()=>{let i=0;const nodes=[];for(const e of"
-          + " document.querySelectorAll('a,button,input,textarea,select,h1,h2,h3,[role=heading],[role=button],[role=link]')){const"
-          + " r=e.getBoundingClientRect();if(!r.width||!r.height||getComputedStyle(e).visibility==='hidden')continue;if(++i>120)break;e.setAttribute('data-tvassistant-id',String(i));nodes.push({id:i,tag:e.tagName,label:(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,180),type:e.type||'',password:e.type==='password',disabled:!!e.disabled,value:e.type==='password'?'[redacted]':String(e.value||'').slice(0,120),href:e.tagName==='A'?e.href:''});}return"
-          + " JSON.stringify({url:location.href,title:document.title,text:document.body.innerText.slice(0,9000),nodes});})()";
+          + " document.querySelectorAll('a,button,input,textarea,select,h1,h2,h3,[role=heading],[role=button],[role=link],[aria-label],svg')){const"
+          + " r=e.getBoundingClientRect(),style=getComputedStyle(e);if(!r.width||!r.height||style.visibility==='hidden')continue;if(e.tagName.toLowerCase()==='svg'&&!e.getAttribute('aria-label')&&style.cursor!=='pointer')continue;if(++i>120)break;e.setAttribute('data-tvassistant-id',String(i));nodes.push({id:i,tag:e.tagName,label:(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('class')||'').slice(0,180),type:e.type||'',password:e.type==='password',disabled:!!e.disabled,value:e.type==='password'?'[redacted]':String(e.value||'').slice(0,120),href:e.tagName==='A'?e.href:''});}return"
+          + " JSON.stringify({url:location.href,title:document.title,viewport:{width:innerWidth,height:innerHeight},text:document.body.innerText.slice(0,9000),nodes});})()";
 
   void inspect(ValueCallback<String> callback) {
     snapshot = java.util.UUID.randomUUID().toString();
@@ -128,7 +128,7 @@ public final class BrowserActivity extends Activity {
             + " 'password';";
     code +=
         "if(e.disabled)return 'disabled';const"
-            + " label=(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||'').slice(0,180);if(label!=="
+            + " label=(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('class')||'').slice(0,180);if(label!=="
             + JSONObject.quote(expectedLabel)
             + ")return 'stale';";
     if (operation.equals("click"))

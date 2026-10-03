@@ -32,7 +32,64 @@ public final class HostChecks {
     return Json.arr(Json.obj("tool", "clock", "args", Json.obj()),
         Json.obj("tool", "calculate", "args", Json.obj("expression", "7*8")));
   }
+  static JSONArray search(String query, String heading) {
+    return Json.arr(
+        Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Search", "action", "click")),
+        Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Title", "action", "type", "text", query)),
+        Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", heading, "match", "text", "action", "wait")));
+  }
+  static JSONObject searchResult() {
+    return Json.obj("stopped_early", false, "completed_steps", 3,
+        "results", Json.arr(Json.obj("performed", true), Json.obj("performed", true, "text_verified", true), Json.obj("verified", true)));
+  }
   public static void main(String[] args) throws Exception {
+    check("automatic learning replaces literals and derives verification for a new query", () -> {
+      JSONObject learned = LearnedSearch.learn(search("The Wire", "Results: The Wire"), Json.obj(), searchResult());
+      yes(learned != null && !learned.toString().contains("The Wire"));
+      JSONObject workflow = learned.getJSONObject("workflow");
+      JSONObject params = LearnedSearch.parameters(workflow, Json.obj("query", "Another show", "result", "Pending"));
+      yes(params.getString("result").equals("Results: Another show"));
+      JSONArray resolved = (JSONArray) ActionPlan.resolve(workflow.getJSONArray("steps"), new JSONArray(), params);
+      yes(resolved.getJSONObject(1).getJSONObject("args").getString("text").equals("Another show"));
+      yes(resolved.getJSONObject(2).getJSONObject("args").getString("label").equals("Results: Another show"));
+      yes(learned.getString("name").equals(LearnedSearch.learn(search("Severance", "Results: Severance"), Json.obj(), searchResult()).getString("name")));
+      rejects(() -> LearnedSearch.parameters(workflow, Json.obj()));
+      rejects(() -> LearnedSearch.parameters(workflow, Json.obj("query", " ")));
+      rejects(() -> LearnedSearch.parameters(workflow, Json.obj("query", 7)));
+    });
+    check("automatic learning accepts parameterized searches without retaining their values", () -> {
+      JSONArray source = search("$param.title", "Results: placeholder");
+      source.getJSONObject(2).getJSONObject("args").put("label", Json.obj("$param", "heading"));
+      JSONObject learned = LearnedSearch.learn(source, Json.obj("title", "Severance", "heading", "Results: Severance"), searchResult());
+      yes(learned != null && !learned.toString().contains("Severance"));
+      yes(source.getJSONObject(1).getJSONObject("args").getString("text").equals("$param.title"));
+    });
+    check("automatic learning rejects failed, unverified and unrelated result headings", () -> {
+      JSONObject failed = searchResult().put("stopped_early", true);
+      yes(LearnedSearch.learn(search("Severance", "Results: Severance"), Json.obj(), failed) == null);
+      failed = searchResult(); failed.getJSONArray("results").getJSONObject(1).put("text_verified", false);
+      yes(LearnedSearch.learn(search("Severance", "Results: Severance"), Json.obj(), failed) == null);
+      failed = searchResult(); failed.getJSONArray("results").getJSONObject(2).put("verified", false);
+      yes(LearnedSearch.learn(search("Severance", "Results: Severance"), Json.obj(), failed) == null);
+      yes(LearnedSearch.learn(search("Severance", "Pending"), Json.obj(), searchResult()) == null);
+      yes(LearnedSearch.learn(search("Severance", "Severance Severance"), Json.obj(), searchResult()) == null);
+    });
+    check("automatic learning rejects mixed origins, field-value verification and query-bearing controls", () -> {
+      JSONArray source = search("Severance", "Results: Severance");
+      source.getJSONObject(2).getJSONObject("args").put("context", "https://other.com");
+      yes(LearnedSearch.learn(source, Json.obj(), searchResult()) == null);
+      source = search("Severance", "Results: Severance"); source.getJSONObject(2).getJSONObject("args").put("match", "exact");
+      yes(LearnedSearch.learn(source, Json.obj(), searchResult()) == null);
+      source = search("Severance", "Results: Severance"); source.getJSONObject(0).getJSONObject("args").put("label", "Severance");
+      yes(LearnedSearch.learn(source, Json.obj(), searchResult()) == null);
+    });
+    check("scroll counts reject fractions and out-of-range values before any actions", () -> {
+      JSONObject schema = Json.obj("type", "object", "properties", Json.obj("count",
+          Json.obj("type", "integer", "minimum", 1, "maximum", 4)), "required", Json.arr());
+      ToolArguments.validate(schema, Json.obj("count", 4));
+      for (double value : new double[] {0, 5, 1.5, Double.NaN})
+        rejects(() -> ToolArguments.validate(schema, Json.obj("count", value)));
+    });
     check("WebSocket delta payload excludes stream and includes previous response", () -> {
       JSONArray input = Json.arr(Json.obj("role", "user", "content", "old"), Json.obj("type", "function_call_output", "call_id", "call1", "output", "{}"));
       JSONObject payload = ResponseSocket.payload(Json.obj("stream", true, "store", false), input, 1, "resp1");
@@ -125,6 +182,126 @@ public final class HostChecks {
       rejects(() -> ActionPlan.validateReusable(reusable));
       reusable.getJSONObject(0).getJSONObject("args").put("action", "type");
       rejects(() -> ActionPlan.validateReusable(reusable));
+    });
+    check("plan preflight rejects invalid later literals and missing parameters", () -> {
+      JSONObject schema = Json.obj("type", "object", "properties", Json.obj(
+          "action", Json.obj("type", "string", "enum", Json.arr("click", "wait")),
+          "timeout_ms", Json.obj("type", "number", "minimum", 0, "maximum", 4000)),
+          "required", Json.arr("action"));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("action", 123), Json.obj()));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("action", "delete"), Json.obj()));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("action", "click", "timeout_ms", 5000), Json.obj()));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("action", Json.obj("$param", "missing")), Json.obj()));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("action", Json.obj("$param", "action")), Json.obj("action", "delete")));
+      ToolArguments.preflight(schema, Json.obj("action", Json.obj("$param", "action")), Json.obj("action", "click"));
+    });
+    check("nested keyboard arguments are checked before delivery", () -> {
+      JSONObject item = Json.obj("type", "object", "properties", Json.obj("x", Json.obj("type", "number"),
+          "y", Json.obj("type", "number")), "required", Json.arr("x", "y"));
+      JSONObject schema = Json.obj("type", "object", "properties", Json.obj("keys", Json.obj("type", "array", "minItems", 1, "maxItems", 32, "items", item)), "required", Json.arr("keys"));
+      ToolArguments.validate(schema, Json.obj("keys", Json.arr(Json.obj("x", 10, "y", 20))));
+      rejects(() -> ToolArguments.validate(schema, Json.obj("keys", "not an array")));
+      rejects(() -> ToolArguments.validate(schema, Json.obj("keys", Json.arr())));
+      rejects(() -> ToolArguments.validate(schema, Json.obj("keys", Json.arr(Json.obj("x", "wrong", "y", 20)))));
+      rejects(() -> ToolArguments.validate(schema, Json.obj("keys", Json.arr(Json.obj("x", 10)))));
+      rejects(() -> ToolArguments.validate(schema, Json.obj("keys", Json.arr(Json.obj("x", 10, "y", 20, "extra", true)))));
+    });
+    check("deferred references are validated after resolution", () -> {
+      JSONObject schema = Json.obj("type", "object", "properties", Json.obj("id", Json.obj("type", "string")), "required", Json.arr("id"));
+      JSONObject template = Json.obj("id", Json.obj("$ref", "0.id"));
+      ToolArguments.preflight(schema, template, Json.obj());
+      JSONObject resolved = (JSONObject) ActionPlan.resolve(template, Json.arr(Json.obj("id", 123)), Json.obj());
+      rejects(() -> ToolArguments.validate(schema, resolved));
+    });
+    check("incorrect text verification stops dependent actions", () -> {
+      int[] calls = {0};
+      JSONObject result = ActionPlan.run(plan(), Json.obj(), runner(calls, Json.obj("performed", true, "text_verified", false), false));
+      yes(calls[0] == 1 && result.getBoolean("stopped_early"));
+    });
+    check("WebSocket payload preserves source and rejects invalid continuation cursor", () -> {
+      JSONArray input = Json.arr(Json.obj("role", "user", "content", "old"), Json.obj("role", "user", "content", "new"));
+      JSONObject request = Json.obj("input", input, "stream", true, "background", false, "model", "test-model");
+      String before = request.toString();
+      JSONObject result = ResponseSocket.payload(request, input, 1, "resp1");
+      yes(request.toString().equals(before) && result.getString("model").equals("test-model")
+          && !result.has("background") && result.getJSONArray("input").length() == 1);
+      rejects(() -> ResponseSocket.payload(request, input, 3, "resp1"));
+      rejects(() -> ResponseSocket.payload(request, input, -1, "resp1"));
+    });
+    check("native typed field follows identity instead of the old value label", () -> {
+      JSONObject original = Json.obj("view_id", "null", "bounds", Json.arr(0, 10, 200, 60), "text", "old");
+      JSONObject updated = Json.obj("view_id", "null", "bounds", Json.arr(0, 10, 200, 60), "text", "new", "editable", true);
+      yes(Tools.typedField(original, Json.obj("nodes", Json.arr(updated))).getString("text").equals("new"));
+      rejects(() -> Tools.typedField(original, Json.obj("nodes", Json.arr(updated, updated))));
+      updated.put("password", true);
+      yes(Tools.typedField(original, Json.obj("nodes", Json.arr(updated))) == null);
+    });
+    check("public page actions can be batched with fresh result references", () -> {
+      ActionPlan.validate(Json.arr(Json.obj("tool", "web_page", "args", Json.obj("action", "read")),
+          Json.obj("tool", "web_page", "args", Json.obj("action", "type", "snapshot", Json.obj("$ref", "0.snapshot")))));
+    });
+    check("cached public searches require parameterized typing and final verification", () -> {
+      JSONArray search = Json.arr(
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Query", "action", "type", "text", Json.obj("$param", "query"))),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", Json.obj("$param", "result"), "match", "text", "action", "wait")));
+      ActionPlan.validateReusable(search);
+      search.getJSONObject(0).getJSONObject("args").put("text", "private literal");
+      rejects(() -> ActionPlan.validateReusable(search));
+      search.getJSONObject(0).getJSONObject("args").put("text", Json.obj("$ref", "0.text"));
+      rejects(() -> ActionPlan.validateReusable(search));
+    });
+    check("readiness excludes field values and snapshot IDs but detects real results", () -> {
+      JSONObject baseline = Json.obj("url", "https://example.com", "text", "Pending", "snapshot", "old",
+          "nodes", Json.arr(Json.obj("tag", "INPUT", "label", "Query", "value", "old")));
+      PageReadiness ready = new PageReadiness(baseline, true);
+      JSONObject typed = new JSONObject(baseline.toString());
+      typed.put("snapshot", "fresh").getJSONArray("nodes").getJSONObject(0).put("value", "query");
+      yes(!ready.ready(typed, 0) && !ready.ready(typed, 1000));
+      yes(!PageReadiness.contains(typed, "query"));
+      typed.put("text", "Results: The   Wire");
+      yes(!ready.ready(typed, 1100) && ready.ready(typed, 1250));
+      yes(PageReadiness.contains(typed, "results: the wire"));
+      rejects(() -> PageReadiness.contains(typed, " "));
+    });
+    check("public origins enforce the same fresh scope guard", () -> {
+      Tools.checkScope(Json.obj("url", "https://example.com/search"), "public", "https://example.com");
+      rejects(() -> Tools.checkScope(Json.obj("url", "https://other.com"), "public", "https://example.com"));
+    });
+    check("parameter shorthand resolves and preflights instead of typing a placeholder", () -> {
+      yes(ActionPlan.resolve("$param.query", Json.arr(), Json.obj("query", "title")).equals("title"));
+      JSONObject schema = Json.obj("type", "object", "properties", Json.obj("text", Json.obj("type", "string")), "required", Json.arr("text"));
+      ToolArguments.preflight(schema, Json.obj("text", "$param.query"), Json.obj("query", "title"));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("text", "$param.query"), Json.obj()));
+      rejects(() -> ToolArguments.preflight(schema, Json.obj("text", "$param.query"), Json.obj("query", Json.obj())));
+      JSONArray search = Json.arr(
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Query", "action", "type", "text", "$param.query")),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "$param.heading", "action", "wait")));
+      ActionPlan.validateReusable(search);
+    });
+    check("large plans retain final observed links and every step status", () -> {
+      JSONArray nodes = new JSONArray();
+      for (int i = 0; i < 100; i++) nodes.put(Json.obj("id", i, "label", "Result" + i,
+          "href", "https://example.com/" + i, "value", "", "password", false, "disabled", false));
+      JSONObject observation = Json.obj("snapshot", "final", "url", "https://example.com", "nodes", nodes,
+          "text", new String(new char[9000]).replace('\0', 'x'));
+      JSONArray steps = Json.arr(Json.obj("performed", true, "observation", observation),
+          Json.obj("verified", true, "observation", observation));
+      JSONObject input = Json.obj("completed_steps", 2, "requested_steps", 2, "stopped_early", false, "results", steps);
+      JSONObject output = new JSONObject(AssistantEngine.toolOutput(input));
+      yes(output.toString().length() <= 16000 && output.getJSONArray("results").length() == 2);
+      yes(output.getJSONArray("results").getJSONObject(1).getBoolean("verified"));
+      yes(output.getJSONObject("observation").getString("snapshot").equals("final")
+          && output.getJSONObject("observation").getJSONArray("nodes").getJSONObject(0).getString("href").equals("https://example.com/0"));
+      yes(input.getJSONArray("results").getJSONObject(0).has("observation"));
+      steps.put(1, Json.obj("error", "Stopped on drift"));
+      output = new JSONObject(AssistantEngine.toolOutput(input));
+      yes(output.getJSONArray("results").getJSONObject(1).optString("error").equals("Stopped on drift"));
+    });
+    check("cached public searches cannot freeze a previous query's verification", () -> {
+      JSONArray search = Json.arr(
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Query", "action", "type", "text", "$param.query")),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Results: previous query", "action", "wait")));
+      rejects(() -> ActionPlan.validateReusable(search));
     });
     check("microphone probe distinguishes no samples from zero PCM", () -> {
       MicrophoneLevels levels = new MicrophoneLevels();

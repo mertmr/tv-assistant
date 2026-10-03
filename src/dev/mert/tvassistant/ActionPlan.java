@@ -10,7 +10,7 @@ final class ActionPlan {
       "youtube_search", "youtube_latest", "youtube_play", "list_sessions", "device_info",
       "clock", "calculate", "weather", "screen_read", "screen_see", "screen_click",
       "screen_type", "screen_scroll", "screen_tap", "screen_swipe", "keyboard_keys",
-      "navigate", "browser_read", "browser_action", "browser_navigation", "wait", "ui_target"));
+      "navigate", "browser_read", "browser_action", "browser_navigation", "wait", "ui_target", "web_page"));
   interface Runner {
     void validate(String tool, JSONObject args) throws Exception;
     JSONObject run(String tool, JSONObject args);
@@ -51,6 +51,8 @@ final class ActionPlan {
   }
 
   static Object resolve(Object value, JSONArray results, JSONObject parameters) throws Exception {
+    if (value instanceof String && ((String) value).matches("\\$param\\.[A-Za-z][A-Za-z0-9_]{0,39}"))
+      return resolve(Json.obj("$param", ((String) value).substring(7)), results, parameters);
     if (value instanceof JSONObject) {
       JSONObject object = (JSONObject) value;
       if (object.has("$param")) {
@@ -83,6 +85,7 @@ final class ActionPlan {
 
   static boolean failed(JSONObject result) {
     return result.has("error") || result.has("observation_error")
+        || (result.has("text_verified") && !result.optBoolean("text_verified"))
         || (result.has("performed") && Boolean.FALSE.equals(result.opt("performed")))
         || (result.has("keys_requested") && result.optInt("keys_requested") != result.optInt("keys_delivered"));
   }
@@ -114,24 +117,37 @@ final class ActionPlan {
     return out;
   }
 
-  // Reusable UI plans must re-resolve every target against a fresh scope and end in a read-only
-  // verification. Raw snapshots/coordinates, typing, and external commitments are never cached.
+  // Cached plans re-resolve labels in a fresh scope. Public typing stores only a parameter
+  // placeholder, never its value. The final step must observe the requested destination.
   static void validateReusable(JSONArray steps) throws Exception {
     validate(steps);
+    boolean publicTyping = false;
     for (int i = 0; i < steps.length(); i++) {
       JSONObject step = steps.getJSONObject(i), args = step.getJSONObject("args");
       Object label = args.opt("label");
-      boolean parameterLabel = label instanceof JSONObject && ((JSONObject) label).length() == 1
-          && ((JSONObject) label).has("$param");
+      boolean validLabel = parameter(label) || (label instanceof String && !((String) label).trim().isEmpty());
+      String action = args.optString("action"), scope = args.optString("scope");
+      boolean typing = action.equals("type") && scope.equals("public") && parameter(args.opt("text"));
+      publicTyping |= typing;
       if (!step.getString("tool").equals("ui_target")
-          || !args.optString("action").matches("click|wait")
-          || !args.optString("scope").matches("native|browser")
+          || !(action.matches("click|wait") || typing)
+          || !scope.matches("native|browser|public")
           || !(args.opt("context") instanceof String) || args.optString("context").isEmpty()
-          || !(parameterLabel || (label instanceof String && !((String) label).trim().isEmpty()))
-          || args.has("text") || args.toString().contains("\"$ref\""))
-        throw new IllegalArgumentException("Only freshly scoped label clicks and verification can be reused");
+          || !validLabel || (args.has("text") && !typing)
+          || args.toString().contains("\"$ref\""))
+        throw new IllegalArgumentException("Reuse needs fresh scoped labels; public typing needs a parameter");
     }
     if (!steps.getJSONObject(steps.length() - 1).getJSONObject("args").optString("action").equals("wait"))
       throw new IllegalArgumentException("Reusable plans must end with a label verification");
+    if (publicTyping && !parameter(steps.getJSONObject(steps.length() - 1).getJSONObject("args").opt("label")))
+      throw new IllegalArgumentException("Public search verification must also use a parameter");
+  }
+
+  private static boolean parameter(Object value) {
+    if (value instanceof String)
+      return ((String) value).matches("\\$param\\.[A-Za-z][A-Za-z0-9_]{0,39}");
+    return value instanceof JSONObject && ((JSONObject) value).length() == 1
+        && ((JSONObject) value).opt("$param") instanceof String
+        && ((JSONObject) value).optString("$param").matches("[A-Za-z][A-Za-z0-9_]{0,39}");
   }
 }

@@ -17,16 +17,6 @@ PASS YouTube feed canonicalizes its unprefixed root channel ID
 PASS YouTube XML entities rejected
 PASS YouTube public channel discovery works on TV
 PASS YouTube live upload feed returns exact playable ID
-PASS socket continuation sends only new input and same response ID
-PASS socket reset uses full context without previous ID
-PASS plan references resolve arrays and scalar parameters
-PASS plan rejects forward references and recursion before execution
-PASS failed delivery stops dependent plan actions
-PASS cancelled plan executes no steps
-PASS plan enforces remaining tool budget before actions
-PASS fresh UI target rejects duplicate labels and password nodes
-PASS fresh UI scope rejects changed app and browser origin
-PASS cache excludes raw coordinate snapshots and typing
 PASS connected requests always use AI
 PASS explicit local-only mode uses local routing
 PASS disconnected basic commands use local routing
@@ -89,9 +79,7 @@ PASS browser text entry
 PASS browser disabled click rejected
 PASS browser click
 PASS browser action verified in DOM
-PASS batched real WebView actions and verified workflow reuse
 PASS browser node filtering
 PASS tool budget enforced
 
-94 passed, 0 failed
-
+83 passed, 0 failed

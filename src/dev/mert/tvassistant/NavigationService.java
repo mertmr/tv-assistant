@@ -134,6 +134,7 @@ public final class NavigationService extends AccessibilityService {
 
   @Override
   public void onDestroy() {
+    Log.i("TvAssistantKeys", "navigation service disconnected");
     if (voiceSearchReceiver != null) {
       try {
         unregisterReceiver(voiceSearchReceiver);
@@ -187,7 +188,9 @@ public final class NavigationService extends AccessibilityService {
 
   private void walk(AccessibilityNodeInfo n, JSONArray out, int depth) {
     if (n == null || depth > 30 || out.length() >= 180) return;
-    if (n.isVisibleToUser()) {
+    Rect b = new Rect();
+    n.getBoundsInScreen(b);
+    if (n.isVisibleToUser() && !b.isEmpty()) {
       String label =
           n.isPassword()
               ? "[password field]"
@@ -207,8 +210,6 @@ public final class NavigationService extends AccessibilityService {
           || n.isFocused()) {
         int id = nodes.size() + 1;
         nodes.put(id, AccessibilityNodeInfo.obtain(n));
-        Rect b = new Rect();
-        n.getBoundsInScreen(b);
         out.put(
             Json.obj(
                 "id",
@@ -298,6 +299,11 @@ public final class NavigationService extends AccessibilityService {
     AccessibilityNodeInfo n = node(snap, id);
     if (n.isPassword()) throw new IllegalArgumentException("Enter passwords yourself");
     if (!n.isEditable()) throw new IllegalArgumentException("Element is not editable");
+    if ("com.amazon.cloud9".contentEquals(n.getPackageName()))
+      throw new IllegalArgumentException(
+          "Silk text replacement does not reliably trigger website input events. Click the field"
+              + " to open its keyboard, then use keyboard_keys with the visible letters, Clear"
+              + " if needed, and Next in one batch. Verify actual search results afterward.");
     Bundle args = new Bundle();
     args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
     return n.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);

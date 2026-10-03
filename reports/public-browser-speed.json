@@ -1,0 +1,74 @@
+[
+  {
+    "sample": "baseline 0.2.2, vision active",
+    "elapsed_ms": 31805,
+    "model_ms": 21102,
+    "action_ms": 7730,
+    "requests": 7,
+    "tool_steps": 6,
+    "batched_steps": 0,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  },
+  {
+    "sample": "initial placeholder failure/recovery, no vision",
+    "elapsed_ms": 44188,
+    "model_ms": 30145,
+    "action_ms": 12014,
+    "requests": 9,
+    "tool_steps": 10,
+    "batched_steps": 3,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  },
+  {
+    "sample": "parameter fix, redundant read, no vision",
+    "elapsed_ms": 40334,
+    "model_ms": 33727,
+    "action_ms": 5392,
+    "requests": 7,
+    "tool_steps": 8,
+    "batched_steps": 3,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  },
+  {
+    "sample": "driver disturbed verification; excluded",
+    "elapsed_ms": 42366,
+    "model_ms": 35304,
+    "action_ms": 5912,
+    "requests": 9,
+    "tool_steps": 10,
+    "batched_steps": 3,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  },
+  {
+    "sample": "final build, timeout preflight recovery, no vision",
+    "elapsed_ms": 40866,
+    "model_ms": 32305,
+    "action_ms": 7652,
+    "requests": 6,
+    "tool_steps": 8,
+    "batched_steps": 6,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  },
+  {
+    "sample": "final repeat, vision active, zero cache hits",
+    "elapsed_ms": 26326,
+    "model_ms": 20169,
+    "action_ms": 5242,
+    "requests": 5,
+    "tool_steps": 6,
+    "batched_steps": 3,
+    "cache_hits": 0,
+    "transport": "websocket",
+    "image_context_resets": 0
+  }
+]

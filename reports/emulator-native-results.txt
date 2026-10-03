@@ -1,0 +1,14 @@
+PASS native accessibility service binds on API 34
+PASS actual native screen contains app controls
+PASS native typing changes actual command field
+PASS native label typing verifies the field after its value changes
+PASS native stale snapshot cannot type again
+PASS native plan clicks and verifies actual app dialog
+PASS native verified workflow reuses fresh controls
+PASS native scope drift stops before a click
+PASS screen vision starts through actual Android consent dialog
+PASS screen_see returns a real nonblank emulator frame
+PASS visual tap opens the native dialog and returns a fresh frame
+PASS target result exposes a usable fresh native snapshot with vision active
+
+12 passed, 0 failed

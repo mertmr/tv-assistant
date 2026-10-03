@@ -47,11 +47,18 @@ final class ResponseSocket implements AutoCloseable {
 
   static JSONObject payload(JSONObject request, JSONArray full, int cursor, String previous)
       throws Exception {
-    JSONObject body = new JSONObject(request.toString());
-    body.remove("stream");
-    body.remove("background");
+    // Do not stringify/copy old screenshots and tool history just to discard them below.
+    JSONObject body = new JSONObject();
+    Iterator<String> keys = request.keys();
+    while (keys.hasNext()) {
+      String key = keys.next();
+      if (!key.equals("input") && !key.equals("stream") && !key.equals("background")
+          && !key.equals("previous_response_id")) body.put(key, request.get(key));
+    }
     body.put("type", "response.create");
     if (!previous.isEmpty()) {
+      if (cursor < 0 || cursor > full.length())
+        throw new IllegalArgumentException("Invalid continuation position");
       JSONArray delta = new JSONArray();
       for (int i = cursor; i < full.length(); i++) delta.put(full.get(i));
       body.put("input", delta).put("previous_response_id", previous);

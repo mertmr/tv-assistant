@@ -55,21 +55,21 @@ The AI can ask follow-up questions and retain the last few exchanges in memory. 
 
 ## Tools
 
-The app exposes **39 validated functions**, several supporting multiple actions:
+The app exposes **40 validated functions**, several supporting multiple actions:
 
 | Area | Tools and operations |
 | --- | --- |
-| Local plans | Batch up to eight allowlisted tools with result references and parameters; resolve fresh scoped labels; reuse verified click/wait workflows and stop on drift |
+| Local plans | Batch up to eight allowlisted tools with result references and parameters; resolve fresh scoped labels; reuse verified workflows, including parameterized public searches, and stop on drift |
 | Apps and links | List installed apps, launch an app, search Stremio/YouTube/Netflix or a supported Android search activity, open HTTPS links in Silk/system/internal browser, web/video search |
 | YouTube | Search public channel/video metadata, read newest uploads from a channel feed, request playback of an exact video, and check matching player-session evidence when available |
 | Media | Search public Cinemeta movie/series metadata, open Stremio detail pages, list active sessions, play/pause/stop/next/previous/seek/rewind/fast-forward when supported |
 | TV | Read/change/mute Android media volume; open general/network/Bluetooth/display/sound/app settings; read device/connectivity information |
 | Screen vision | Optional user-approved screen session, screenshot inspection, taps and swipes using image coordinates, bounded batches of visible keyboard keys; local history retains only the newest screenshot; WebSocket chains reset after at most three images |
 | Native navigation | Read visible screen labels, click identified nodes, type in non-password fields, scroll, move focus/select, supported Back/Home/Recents/notification actions |
-| Browsing | Read page text and DOM nodes, filter nodes by label/link text, click/type, back/forward/reload/scroll in the internal WebView |
+| Browsing | Read/click/type in the internal browser; web_page inspects public pages in a background WebView, triggers dynamic searches, and returns verified links for Silk |
 | Personal utilities | Clock, arithmetic, current weather/three-day forecast, local notes/preferences, saved routines, in-process timers, optional TV text-to-speech, bounded waits |
 
-Tool arguments are checked against their definitions before execution. Each action reports what Android accepted. A launch or transport request does not prove that a page loaded or playback started; the AI is instructed to inspect results before claiming completion. Missing permissions and unsupported app actions return explicit errors.
+Tool arguments, including nested keyboard arrays, are checked against their definitions before execution. All plan literals and supplied parameters are checked before the first step; result references are checked again once resolved. A failed text verification stops dependent plan steps. Each action reports what Android accepted. A launch or transport request does not prove that a page loaded or playback started; the AI is instructed to inspect results before claiming completion. Missing permissions and unsupported app actions return explicit errors.
 
 ## Usage control
 
@@ -79,7 +79,9 @@ The defaults are **4 AI requests and 10 tool steps per command**. Settings allow
 
 Version 0.2.0 opens one authenticated Responses WebSocket per task and sends only new tool results on continuations. Responses stay `store:false`. Before any generation is submitted, an unavailable WebSocket falls back to HTTPS/SSE; Android 6 uses HTTPS because the socket library's hostname verification requires API 24. A connection lost after submission stops the task instead of replaying uncertain work. Screenshots accumulate only within a bounded chain; after three images it starts a fresh chain on the same socket using local context with the latest image.
 
-`action_plan` executes bounded JSON steps rather than arbitrary code. `ui_target` resolves a unique visible label in the expected package or HTTPS origin, with bounded polling/scrolling. Successful scoped click/wait plans can be cached under `cache_name` only if their final label is verified. `workflow` lists/runs/removes those paths. Cached paths re-resolve each label; they never reuse snapshots, coordinates, typing or saved parameter values. The AI still interprets every connected command and chooses whether a path is relevant. These tools cannot make a custom-rendered interface expose labels.
+`action_plan` executes bounded JSON steps rather than arbitrary code. `ui_target` resolves a unique visible label in the expected package or HTTPS origin, with bounded polling/scrolling. Successful scoped click/wait plans and public-page searches with `$param` typing can be cached under `cache_name` only if their final label or result text is verified. `workflow` lists/runs/removes those paths. Cached paths re-resolve each label; they never reuse snapshots, coordinates or saved parameter values. Public search typing and its final verification label are stored only as parameter placeholders; every run checks the actual HTTPS origin and resolves fresh, unambiguous controls. The AI still interprets every connected command and chooses whether a path is relevant. The `public` scope targets the isolated page without requiring accessibility. `match: "text"` is reserved for public wait steps and checks visible body text, excluding input values. Use a result heading that includes the query or an exact result label. These tools cannot make a custom-rendered interface expose labels.
+
+Verified public search plans now learn automatically when `cache_name` is omitted. Eligible routines have an optional click, one type action, and a final body-text wait on the same HTTPS origin. The verified text must contain the query exactly once. Learning replaces both the query and verification label with parameters and saves only control labels plus the surrounding verification wording. It rejects failures, unrelated headings, mixed origins, and controls containing the query. A `kind: public_search` workflow needs only `{"query":"new title"}` on replay; its verification is derived automatically, even if a caller supplies a different result label. The cache holds at most 20 workflows. Opening a site returns relevant workflows to the AI, which chooses a routine and then selects the correct item from fresh results. Learning does not save show/episode destinations or automate signed-in Silk pages. This avoids rebuilding familiar search plans; live latency improvements still require measurement.
 
 Task timing is shown in the action log and saved as aggregate `last_performance` numbers: elapsed/model/action milliseconds, request/tool/batch counts, cache hits, transport and image-chain resets. No screenshots or tokens are stored with those metrics. Faster real browsing has not yet been measured for this version.
 
@@ -128,7 +130,7 @@ Commands, history, notes, and preferences remain in the app's local sandbox. The
   not a privileged button/microphone replacement. Raw remote capture and independent speech-to-text
   are unverified. Mic test is foreground-only and never adds background recording.
 - Each app must support its link/search/session interface or expose readable accessibility nodes. Secure/custom-rendered/DRM interfaces may not be automatable. YouTube on this Fire TV exposes no useful screen labels; exact video links work, but its profile chooser may require you to choose a profile yourself. The assistant can use optional screen vision to inspect and tap these interfaces. Without screen vision, it reports an unreadable screen as a limitation. YouTube metadata comes from public web pages and the public channel upload feed; site changes, consent pages or feed errors can block lookup, and the feed may include Shorts. There is no privileged shell, root, arbitrary JavaScript tool, universal app API, or silent app installation.
-- Browser DOM tools operate in the internal WebView, with its own cookie/session store. Silk can be opened and may expose native labels, but its DOM and cookies are not available to the internal browser tools.
+- Browser DOM tools use this app's WebView cookie store. The public web_page tool can inspect/search a public site in a background view, then AI opens a returned link in Silk. It cannot access Silk DOM/cookies or its signed-in state. Native keyboard input remains inconsistent for some dynamic Silk searches; signed-in pages still need native/visual navigation. The public-page view is bounded to one instance and destroyed with the assistant activity. `web_page` can participate in `action_plan`; opening a site returns up to five recently verified workflows for its origin, avoiding another lookup request. `wait_text` waits for expected visible results within a bounded deadline. Default waits observe content changes/stability instead of fixed sleeps; `settled` alone does not establish task success. Public label typing verifies the field immediately so a following batch wait can watch for AJAX results without another AI round trip. Oversized plan results preserve every step status and the final observation, avoiding a redundant read and retaining stopped-step errors.
 - Software volume may be fixed on HDMI devices. Changing an external television/receiver's IR/CEC volume is not implemented.
 - Timers run in this app's process; they are not persistent wake-up alarms and do not survive process death or wake a sleeping TV. Spoken output depends on an installed TTS engine and the Settings toggle.
 - This is a sideloaded development release, targeting API 28 for the tested Fire OS. Store distribution and additional device/OS testing remain separate work. The source is provided under MIT; ChatGPT plan access remains subject to OpenAI's current account eligibility and preview behavior.
@@ -152,11 +154,33 @@ Build intermediates and the development signing key are in the project's ignored
 
 Source layout: `MainActivity` owns the TV UI; `LocalCommands`/`LocalFormatter` handle direct commands; `AssistantEngine` runs bounded Responses function calls; `Tools` contains schemas and execution; `NavigationService` reads/acts on native nodes; `BrowserActivity` supplies restricted DOM operations; `ChatAuth`/`Vault` handle OAuth and encrypted accounts; `Net` handles HTTPS and event streams; `MicrophoneProbe`/`MicrophoneLevels` provide the local-only mic diagnostic. The device test runner covers parsing, argument rejection, identity signatures, completion/failure handling, tool budgets, and real WebView actions.
 
+## Emulator development
+
+A dedicated Android TV API 34 ARM64 AVD can test the app without using the physical Fire TV:
+
+```sh
+python3 emulator.py start             # visible TV window, host audio disabled
+python3 emulator.py test --headless   # builds/installs/runs both emulator suites
+python3 emulator.py stop              # stops only this project's emulator
+```
+
+The helper downloads the SDK image if needed and stores the AVD under ignored `build/avd/`.
+It uses `TVAssistant_API34`, serial `emulator-5560`, and ADB port 5037. Every install/open/test/stop
+checks emulator identity. It never selects an IP-address device, copies a ChatGPT account, records
+host audio, or starts a live inference benchmark. The full suite makes read-only public YouTube
+metadata requests; it uses no ChatGPT inference. Native tests exercise real accessibility controls,
+text updates, verified workflow reuse, normal Android screen-capture consent, JPEG acquisition and
+gesture delivery. Test reports are separate from Fire TV reports. Instrumentation cleanup rebinds
+only our navigation service and removes the test APK.
+
+Silk, Alexa, the Fire remote microphone, device-specific media/DRM behavior and live authenticated
+AI performance still need their own validation. The emulator has no signed-in ChatGPT account.
+
 ## Verified device
 
 Amazon **AFTKA**, Fire TV Stick 4K Max first generation, Fire OS **7.7.1.3**, Android 9/API 28. Amazon's `FireTVIME` delivered actual remote dictation into the earlier probe. The assistant's typed command/submission, calculator, app inventory, native screen reading, Stremio search, active playback-session access, and real internal browser DOM operations were exercised on-device. The test report is `reports/tv-assistant-test-results.txt`.
 
-The user completed ChatGPT authorization on the TV. Live plan-backed inference successfully executed a device-info/calculator chain and a Stremio launch/wait/screen-read chain, correctly identifying The Wire. See `VALIDATION.md` for the current test count, latest live verification, and compatibility limits.
+The user completed ChatGPT authorization on the TV. Version 0.2.1 passed 94 Fire TV checks. Live WebSocket continuation and AI batching completed the device/clock/calculator benchmark in 9.6 seconds versus a prior 18.0-second sample. AI opened and verified The Wire in Stremio, recovering from a catalog timeout. The full Silk site-search-to-The Wire Season 1 Episode 1 command completed in 31.8 seconds/seven requests, with the actual episode page verified. See `VALIDATION.md` for the current test count, latest live verification, and compatibility limits.
 
 ## Official integration references
 

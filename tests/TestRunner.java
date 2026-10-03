@@ -18,12 +18,16 @@ public final class TestRunner extends Instrumentation {
   private boolean youtubeOnly;
   private boolean visionOnly;
   private boolean benchmarkOnly;
+  private boolean emulatorOnly;
+  private boolean nativeOnly;
   private final StringBuilder report = new StringBuilder();
 
   @Override
   public void onCreate(Bundle args) {
     super.onCreate(args);
     youtubeOnly = args != null && "youtube".equals(args.getString("group"));
+    nativeOnly = args != null && "emulator-native".equals(args.getString("group"));
+    emulatorOnly = args != null && "emulator".equals(args.getString("group"));
     benchmarkOnly = args != null && "benchmark".equals(args.getString("group"));
     visionOnly = args != null && "vision".equals(args.getString("group"));
     start();
@@ -397,6 +401,182 @@ public final class TestRunner extends Instrumentation {
     });
   }
 
+  private String sandboxShell(String command) throws Exception {
+    try (android.os.ParcelFileDescriptor descriptor =
+        getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES)
+            .executeShellCommand(command)) {
+      return Net.read(new android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor), 16000).trim();
+    }
+  }
+
+  private boolean containsLabel(JSONObject screen, String label) throws Exception {
+    if (screen == null) return false;
+    JSONArray nodes = screen.optJSONArray("nodes");
+    if (nodes == null) return false;
+    for (int i = 0; i < nodes.length(); i++) {
+      JSONObject node = nodes.getJSONObject(i);
+      if (node.optString("text").equals(label) || node.optString("description").equals(label)) return true;
+    }
+    return false;
+  }
+
+  private android.view.accessibility.AccessibilityNodeInfo consentButton(
+      android.view.accessibility.AccessibilityNodeInfo root) {
+    if (root == null) return null;
+    String text = String.valueOf(root.getText());
+    if (root.isClickable() && (text.equalsIgnoreCase("Start now") || text.equalsIgnoreCase("Allow")))
+      return android.view.accessibility.AccessibilityNodeInfo.obtain(root);
+    for (int i = 0; i < root.getChildCount(); i++) {
+      android.view.accessibility.AccessibilityNodeInfo child = root.getChild(i);
+      if (child != null) {
+        android.view.accessibility.AccessibilityNodeInfo found = consentButton(child);
+        child.recycle();
+        if (found != null) return found;
+      }
+    }
+    return null;
+  }
+
+  private void nativeSandbox() {
+    if (!Build.HARDWARE.equals("ranchu")) {
+      Bundle result = new Bundle(); result.putString("stream", "Refused: native sandbox requires the emulator.\n0 passed, 1 failed\n");
+      finish(0, result); return;
+    }
+    Tools.Host host = new Tools.Host() {
+      public <T> T ui(Callable<T> task) throws Exception {
+        FutureTask<T> future = new FutureTask<>(task);
+        new Handler(Looper.getMainLooper()).post(future);
+        return future.get(15, TimeUnit.SECONDS);
+      }
+      public boolean approve(String text) { return false; }
+      public void trace(String text) {}
+      public void speak(String text) {}
+      public boolean cancelled() { return false; }
+    };
+    Tools tools = new Tools(getTargetContext(), host);
+    tools.startTask(32);
+    try {
+      // Instrumentation can mark the service crashed. Rebind only ours in the fresh sandbox.
+      String service = "dev.mert.tvassistant/dev.mert.tvassistant.NavigationService";
+      String existing = sandboxShell("settings get secure enabled_accessibility_services");
+      java.util.List<String> others = new java.util.ArrayList<>();
+      for (String value : existing.split(":")) if (!value.isEmpty() && !value.equals("null") && !value.equals(service)) others.add(value);
+      String other = android.text.TextUtils.join(":", others);
+      sandboxShell("settings put secure enabled_accessibility_services " + (other.isEmpty() ? "null" : other));
+      others.add(service);
+      sandboxShell("settings put secure enabled_accessibility_services " + android.text.TextUtils.join(":", others));
+      sandboxShell("settings put secure accessibility_enabled 1");
+      MainActivity main = (MainActivity) startActivitySync(new Intent(getTargetContext(), MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+      for (int i = 0; NavigationService.instance == null && i < 40; i++) Thread.sleep(100);
+      test("native accessibility service binds on API 34", () -> yes(NavigationService.instance != null));
+      JSONObject initial = tools.execute("screen_read", Json.obj());
+      test("actual native screen contains app controls", () -> yes(containsLabel(initial, "Apps") && !initial.has("error")));
+      int field = -1;
+      JSONArray nodes = initial.getJSONArray("nodes");
+      for (int i = 0; i < nodes.length(); i++) if (nodes.getJSONObject(i).optBoolean("editable") && !nodes.getJSONObject(i).optBoolean("password")) field = nodes.getJSONObject(i).getInt("id");
+      final int fieldId = field;
+      test("native typing changes actual command field", () -> {
+        JSONObject typed = tools.execute("screen_type", Json.obj("snapshot", initial.getString("snapshot"), "id", fieldId, "text", "sandbox text"));
+        JSONObject after = null;
+        for (int i = 0; i < 20; i++) {
+          after = host.ui(() -> NavigationService.instance.inspect());
+          if (containsLabel(after, "sandbox text")) break;
+          Thread.sleep(100);
+        }
+        if (!typed.optBoolean("performed") || !containsLabel(after, "sandbox text"))
+          throw new AssertionError("typing=" + typed + " observation=" + after);
+        yes(typed.optBoolean("performed") && containsLabel(after, "sandbox text"));
+      });
+      test("native label typing verifies the field after its value changes", () -> {
+        JSONObject typed = tools.execute("ui_target", Json.obj("scope", "native", "context", getTargetContext().getPackageName(),
+            "label", "sandbox text", "action", "type", "text", "verified text"));
+        yes(typed.optBoolean("performed") && typed.optBoolean("text_verified")
+            && containsLabel(typed.getJSONObject("observation"), "verified text"));
+      });
+      test("native stale snapshot cannot type again", () -> yes(tools.execute("screen_type", Json.obj("snapshot", initial.getString("snapshot"), "id", fieldId, "text", "wrong")).has("error")));
+      JSONArray plan = Json.arr(
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "native", "context", getTargetContext().getPackageName(), "label", "Apps", "action", "click")),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "native", "context", getTargetContext().getPackageName(), "label", "Installed apps", "action", "wait")));
+      test("native plan clicks and verifies actual app dialog", () -> {
+        JSONObject result = tools.execute("action_plan", Json.obj("steps", plan.toString(), "cache_name", "sandbox-native"));
+        yes(!result.has("error") && !result.optBoolean("stopped_early") && result.has("cached_workflow"));
+      });
+      tools.execute("navigate", Json.obj("direction", "back"));
+      Thread.sleep(200);
+      test("native verified workflow reuses fresh controls", () -> {
+        JSONObject result = tools.execute("workflow", Json.obj("action", "run", "name", "sandbox-native"));
+        yes(result.optBoolean("cache_hit") && containsLabel(tools.execute("screen_read", Json.obj()), "Installed apps"));
+      });
+      tools.execute("navigate", Json.obj("direction", "back"));
+      tools.execute("workflow", Json.obj("action", "remove", "name", "sandbox-native"));
+      test("native scope drift stops before a click", () -> yes(tools.execute("ui_target", Json.obj("scope", "native", "context", "other.app", "label", "Apps", "action", "click")).has("error")));
+      test("screen vision starts through actual Android consent dialog", () -> {
+        host.ui(() -> {
+          android.media.projection.MediaProjectionManager manager = (android.media.projection.MediaProjectionManager) main.getSystemService(Context.MEDIA_PROJECTION_SERVICE);
+          main.startActivityForResult(manager.createScreenCaptureIntent(), 902); return true;
+        });
+        boolean clicked = false;
+        for (int i = 0; i < 60 && !clicked; i++) {
+          Thread.sleep(100);
+          android.view.accessibility.AccessibilityNodeInfo root = getUiAutomation(android.app.UiAutomation.FLAG_DONT_SUPPRESS_ACCESSIBILITY_SERVICES).getRootInActiveWindow();
+          if (root != null) {
+            if (String.valueOf(root.getPackageName()).equals("com.android.systemui")) {
+              android.view.accessibility.AccessibilityNodeInfo button = consentButton(root);
+              if (button != null) { clicked = button.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK); button.recycle(); }
+            }
+            root.recycle();
+          }
+        }
+        yes(clicked);
+        for (int i = 0; CaptureService.instance == null && i < 50; i++) Thread.sleep(100);
+        yes(CaptureService.instance != null);
+      });
+      JSONObject image = tools.execute("screen_see", Json.obj());
+      test("screen_see returns a real nonblank emulator frame", () -> {
+        yes(!image.has("error") && image.getString("image_url").startsWith("data:image/jpeg;base64,"));
+        byte[] jpeg = android.util.Base64.decode(image.getString("image_url").substring("data:image/jpeg;base64,".length()), android.util.Base64.DEFAULT);
+        android.graphics.Bitmap bitmap = android.graphics.BitmapFactory.decodeByteArray(jpeg, 0, jpeg.length);
+        yes(bitmap != null && bitmap.getWidth() == image.getInt("width") && bitmap.getHeight() == image.getInt("height"));
+        java.util.Set<Integer> colors = new java.util.HashSet<>();
+        for (int y = 0; y < bitmap.getHeight(); y += 40) for (int x = 0; x < bitmap.getWidth(); x += 40) colors.add(bitmap.getPixel(x, y));
+        bitmap.recycle(); yes(colors.size() > 3);
+      });
+      test("visual tap opens the native dialog and returns a fresh frame", () -> {
+        JSONObject screen = tools.execute("screen_read", Json.obj());
+        JSONObject apps = Tools.uniqueTarget(screen, "Apps", false, false, false);
+        JSONArray bounds = apps.getJSONArray("bounds");
+        android.util.DisplayMetrics metrics = new android.util.DisplayMetrics();
+        host.ui(() -> { main.getWindowManager().getDefaultDisplay().getRealMetrics(metrics); return true; });
+        int x = (int) ((bounds.getInt(0) + bounds.getInt(2)) / 2.0 * image.getInt("width") / metrics.widthPixels);
+        int y = (int) ((bounds.getInt(1) + bounds.getInt(3)) / 2.0 * image.getInt("height") / metrics.heightPixels);
+        JSONObject result = tools.execute("screen_tap", Json.obj("snapshot", image.getString("snapshot"), "x", x, "y", y, "target", "Apps"));
+        if (!result.optBoolean("performed") || !result.has("image_url")
+            || result.optString("snapshot").equals(image.getString("snapshot"))
+            || !containsLabel(result.optJSONObject("native_screen"), "Installed apps")) {
+          result.remove("image_url");
+          throw new AssertionError("tap=" + result);
+        }
+      });
+      tools.execute("navigate", Json.obj("direction", "back"));
+      test("target result exposes a usable fresh native snapshot with vision active", () -> {
+        JSONObject result = tools.execute("ui_target", Json.obj("scope", "native",
+            "context", getTargetContext().getPackageName(), "label", "Clear", "action", "click"));
+        JSONObject nativeScreen = result.getJSONObject("native_screen");
+        JSONObject appsNode = Tools.uniqueTarget(nativeScreen, "Apps", false, false, false);
+        JSONObject clicked = tools.execute("screen_click", Json.obj("snapshot", nativeScreen.getString("snapshot"), "id", appsNode.getInt("id")));
+        yes(clicked.optBoolean("performed") && containsLabel(clicked.getJSONObject("native_screen"), "Installed apps"));
+        tools.execute("navigate", Json.obj("direction", "back"));
+      });
+    } catch (Exception error) {
+      failed++; report.append("FAIL native sandbox setup: ").append(ChatAuth.safe(error)).append('\n');
+    } finally {
+      try { host.ui(() -> { getTargetContext().stopService(new Intent(getTargetContext(), CaptureService.class)); return true; }); } catch (Exception ignored) {}
+      tools.close();
+    }
+    Bundle result = new Bundle(); result.putString("stream", report + "\n" + passed + " passed, " + failed + " failed\n");
+    finish(failed == 0 ? -1 : 0, result);
+  }
+
   private void benchmark() {
     test("live read-only AI benchmark", () -> {
       Context context = getTargetContext();
@@ -432,6 +612,7 @@ public final class TestRunner extends Instrumentation {
 
   @Override
   public void onStart() {
+    if (nativeOnly) { nativeSandbox(); return; }
     if (benchmarkOnly) { benchmark(); return; }
     visionTests();
     if (visionOnly) {
@@ -979,12 +1160,170 @@ public final class TestRunner extends Instrumentation {
                         .optString("label")
                         .equals("Search"));
           });
-      host.ui(
-          () -> {
-            BrowserActivity b = BrowserActivity.current.get();
-            if (b != null) b.finish();
-            return true;
-          });
+      final BrowserActivity foreground = BrowserActivity.current.get();
+      PublicBrowser isolated = host.ui(() -> {
+        PublicBrowser view = new PublicBrowser(c);
+        view.web.loadDataWithBaseURL("https://example.com/",
+            "<meta name='viewport' content='width=device-width'><style>@media(max-width:1000px){input[aria-label=Query]{display:none}}</style>"
+                + "<h1>Public fixture</h1><input aria-label='Query' oninput=\"document.querySelector('h1').innerText='input:'+this.value\""
+                + " onchange=\"document.querySelector('a').innerText='Result:'+this.value\"><a href='https://example.com/verified/'>Pending</a>"
+                + "<input type='password' value='private-secret'><button disabled>Blocked</button>"
+                + "<svg class='TestIcon' style='width:40px;height:40px;cursor:pointer' onclick=\"document.querySelector('h1').innerText='Icon clicked'\"></svg>", "text/html", "UTF-8", null);
+        return view;
+      });
+      java.lang.reflect.Field fieldPublic = Tools.class.getDeclaredField("publicBrowser");
+      fieldPublic.setAccessible(true); fieldPublic.set(tools, isolated);
+      JSONObject isolatedLoaded = new JSONObject();
+      for (int i = 0; i < 30; i++) {
+        Thread.sleep(100);
+        isolatedLoaded = tools.execute("web_page", Json.obj("action", "read"));
+        if (isolatedLoaded.optString("text").contains("Public fixture")) break;
+      }
+      final JSONObject isolatedPage = isolatedLoaded;
+      test("isolated public page extracts DOM without launching an activity", () -> {
+        yes(isolatedPage.optString("text").contains("Public fixture") && !isolatedPage.toString().contains("private-secret"));
+        yes(BrowserActivity.current.get() == foreground);
+      });
+      JSONObject input = Tools.uniqueTarget(isolatedPage, "Query", false, true, true);
+      test("public TV viewport exposes desktop search controls", () -> yes(input != null && isolatedPage.getJSONObject("viewport").getInt("width") >= 1000));
+      final int publicInputId = input.getInt("id");
+      test("public typing dispatches input and change and yields a real result link", () -> {
+        JSONObject result = tools.execute("web_page", Json.obj("action", "type", "snapshot", isolatedPage.getString("snapshot"),
+            "id", publicInputId, "text", "wire"));
+        yes(result.optString("text").contains("input:wire") && result.optString("text").contains("Result:wire"));
+        JSONObject link = Tools.uniqueTarget(result, "Result:wire", false, true, false);
+        yes(link.optString("href").equals("https://example.com/verified/"));
+      });
+      test("public stale, password, and disabled actions are rejected", () -> {
+        yes(tools.execute("web_page", Json.obj("action", "type", "snapshot", isolatedPage.getString("snapshot"), "id", publicInputId, "text", "wrong")).has("error"));
+        JSONObject fresh = tools.execute("web_page", Json.obj("action", "read"));
+        JSONArray publicNodes = fresh.getJSONArray("nodes");
+        for (int i = 0; i < publicNodes.length(); i++) {
+          JSONObject node = publicNodes.getJSONObject(i);
+          if (node.optBoolean("password") || node.optBoolean("disabled"))
+            yes(tools.execute("web_page", Json.obj("action", "click", "snapshot", fresh.getString("snapshot"), "id", node.getInt("id"))).has("error"));
+        }
+        yes(tools.execute("web_page", Json.obj("action", "open", "url", "file:///private")).has("error"));
+        yes(tools.execute("web_page", Json.obj("action", "open", "url", "https://auth.openai.com/")).has("error"));
+      });
+      test("public SVG controls are observed and clicked with fresh identity", () -> {
+        JSONObject fresh = tools.execute("web_page", Json.obj("action", "read"));
+        JSONObject icon = Tools.uniqueTarget(fresh, "TestIcon", false, true, false);
+        yes(icon != null);
+        JSONObject clicked = tools.execute("web_page", Json.obj("action", "click", "snapshot", fresh.getString("snapshot"), "id", icon.getInt("id")));
+        yes(clicked.optString("text").contains("Icon clicked"));
+      });
+      // Asynchronous search fixture: an input value is observable before real results arrive.
+      host.ui(() -> {
+        isolated.web.loadDataWithBaseURL("https://example.com/",
+            "<h1>Search fixture</h1><button onclick=\"document.querySelector('input').style.display='block'\">Search</button>"
+                + "<input style='display:none' aria-label='Query' oninput=\"document.querySelector('h2').innerText='Pending';clearTimeout(window.pending);const q=this.value;window.pending=setTimeout(()=>{document.querySelector('h2').innerText='Results: '+q;document.querySelector('a').innerText='Title: '+q},650)\">"
+                + "<h2>Pending</h2><a href='https://example.com/episode/1'>No result</a>", "text/html", "UTF-8", null);
+        return true;
+      });
+      tools.execute("web_page", Json.obj("action", "read", "wait_text", "Search fixture", "timeout_ms", 4000));
+      JSONArray searchPlan = Json.arr(
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Search", "action", "click")),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", "Query", "action", "type", "text", "$param.title")),
+          Json.obj("tool", "ui_target", "args", Json.obj("scope", "public", "context", "https://example.com", "label", Json.obj("$param", "heading"), "match", "text", "action", "wait", "timeout_ms", 2000)));
+      test("public search batches fresh actions and waits for delayed real results", () -> {
+        long start = android.os.SystemClock.elapsedRealtime();
+        JSONObject result = tools.execute("action_plan", Json.obj("steps", searchPlan.toString(), "parameters", Json.obj("title", "Wire", "heading", "Results: Wire").toString(), "cache_name", "public-search-fixture"));
+        long elapsed = android.os.SystemClock.elapsedRealtime() - start;
+        yes(!result.has("error") && !result.optBoolean("stopped_early") && result.has("cached_workflow"));
+        JSONObject observed = result.getJSONArray("results").getJSONObject(2).getJSONObject("observation");
+        yes(observed.optString("text").contains("Title: Wire") && elapsed >= 600 && elapsed < 2000);
+        report.append("Public search batch: ").append(elapsed).append(" ms; fixture delay650ms\n");
+      });
+      test("cached public search uses new parameters without retaining typed values", () -> {
+        JSONObject stored = tools.execute("workflow", Json.obj("action", "list"));
+        yes(!stored.toString().contains("Results: Wire") && !stored.toString().contains("\"Wire\""));
+        JSONObject result = tools.execute("workflow", Json.obj("action", "run", "name", "public-search-fixture", "parameters", Json.obj("title", "Another show", "heading", "Results: Another show").toString()));
+        yes(result.optBoolean("cache_hit") && result.getJSONArray("results").getJSONObject(2).getJSONObject("observation").optString("text").contains("Title: Another show"));
+        yes(BrowserActivity.current.get() == foreground);
+      });
+      final String[] learnedSearchName = {""};
+      test("successful literal public searches learn without an explicit cache name", () -> {
+        JSONArray literal = new JSONArray(searchPlan.toString());
+        literal.getJSONObject(1).getJSONObject("args").put("text", "Severance");
+        literal.getJSONObject(2).getJSONObject("args").put("label", "Results: Severance");
+        JSONObject result = tools.execute("action_plan", Json.obj("steps", literal.toString()));
+        yes(!result.has("error") && !result.optBoolean("stopped_early") && result.optBoolean("learned_automatically"));
+        learnedSearchName[0] = result.getString("cached_workflow");
+        JSONObject saved = tools.execute("workflow", Json.obj("action", "list")).getJSONObject("workflows").getJSONObject(learnedSearchName[0]);
+        yes(!saved.toString().contains("Severance") && saved.optString("kind").equals("public_search"));
+      });
+      test("automatically learned searches replay with query only and verify fresh results", () -> {
+        JSONObject result = tools.execute("workflow", Json.obj("action", "run", "name", learnedSearchName[0],
+            "parameters", Json.obj("query", "Better Call Saul", "result", "Pending").toString()));
+        yes(result.optBoolean("cache_hit") && result.getJSONArray("results").getJSONObject(2).getJSONObject("observation").optString("text").contains("Title: Better Call Saul"));
+        yes(BrowserActivity.current.get() == foreground);
+        yes(tools.execute("workflow", Json.obj("action", "run", "name", learnedSearchName[0])).has("error"));
+      });
+      test("public search drift and missing parameters stop before later actions", () -> {
+        JSONObject missing = tools.execute("workflow", Json.obj("action", "run", "name", "public-search-fixture", "parameters", Json.obj("title", "wrong").toString()));
+        yes(missing.has("error"));
+        host.ui(() -> { isolated.web.evaluateJavascript("document.querySelector('button').innerText='Changed';document.querySelector('input').value='unchanged'", null); return true; });
+        JSONObject changed = tools.execute("workflow", Json.obj("action", "run", "name", "public-search-fixture", "parameters", Json.obj("title", "wrong", "heading", "Results: wrong").toString()));
+        yes(changed.optBoolean("stopped_early") && changed.optInt("completed_steps") == 0 && !changed.optBoolean("cache_hit"));
+        JSONObject observed = tools.execute("web_page", Json.obj("action", "read"));
+        yes(Tools.uniqueTarget(observed, "Query", false, true, true).optString("value").equals("unchanged"));
+        JSONObject learnedDrift = tools.execute("workflow", Json.obj("action", "run", "name", learnedSearchName[0],
+            "parameters", Json.obj("query", "New title").toString()));
+        yes(learnedDrift.optBoolean("stopped_early") && learnedDrift.optInt("completed_steps") == 0 && !learnedDrift.optBoolean("cache_hit"));
+        tools.execute("workflow", Json.obj("action", "remove", "name", learnedSearchName[0]));
+      });
+      test("public label actions reject changed origin and ambiguity", () -> {
+        yes(tools.execute("ui_target", Json.obj("scope", "public", "context", "https://other.com", "label", "Query", "action", "type", "text", "wrong")).has("error"));
+        host.ui(() -> { isolated.web.evaluateJavascript("document.body.insertAdjacentHTML('beforeend','<input aria-label=Query>')", null); return true; });
+        yes(tools.execute("ui_target", Json.obj("scope", "public", "context", "https://example.com", "label", "Query", "action", "type", "text", "wrong")).has("error"));
+        host.ui(() -> { isolated.web.evaluateJavascript("document.querySelector('input:last-child').remove()", null); return true; });
+      });
+      test("public readiness stops promptly and cannot verify an input value", () -> {
+        JSONObject fresh = tools.execute("web_page", Json.obj("action", "read"));
+        JSONObject inputNode = Tools.uniqueTarget(fresh, "Query", false, true, true);
+        long start = android.os.SystemClock.elapsedRealtime();
+        JSONObject timeout = tools.execute("web_page", Json.obj("action", "type", "snapshot", fresh.getString("snapshot"), "id", inputNode.getInt("id"), "text", "waiting", "wait_text", "Results: waiting", "timeout_ms", 150));
+        yes(timeout.has("error") && !timeout.optBoolean("settled") && android.os.SystemClock.elapsedRealtime() - start < 600);
+        yes(tools.execute("ui_target", Json.obj("scope", "public", "context", "https://example.com", "label", "missing result", "match", "text", "action", "wait", "timeout_ms", 0)).has("error"));
+        JSONObject done = tools.execute("web_page", Json.obj("action", "read", "wait_text", "Results: waiting", "timeout_ms", 2000));
+        yes(!done.has("error") && done.optBoolean("settled") && done.optString("text").contains("Title: waiting"));
+      });
+      test("raw public page steps batch observed snapshots without extra model calls", () -> {
+        JSONArray direct = Json.arr(Json.obj("tool", "web_page", "args", Json.obj("action", "read")),
+            Json.obj("tool", "web_page", "args", Json.obj("action", "read", "wait_text", "Results: waiting", "timeout_ms", 1000)));
+        JSONObject result = tools.execute("action_plan", Json.obj("steps", direct.toString()));
+        yes(!result.has("error") && result.optInt("completed_steps") == 2);
+      });
+      test("public readiness cancellation interrupts local polling", () -> {
+        final java.util.concurrent.atomic.AtomicBoolean cancelled = new java.util.concurrent.atomic.AtomicBoolean();
+        Tools cancellable = new Tools(c, new Tools.Host() {
+          public <T> T ui(Callable<T> task) throws Exception { return host.ui(task); }
+          public boolean approve(String text) { return false; }
+          public void trace(String text) {}
+          public void speak(String text) {}
+          public boolean cancelled() { return cancelled.get(); }
+        });
+        cancellable.startTask(4);
+        fieldPublic.set(cancellable, isolated);
+        Thread stop = new Thread(() -> {
+          try { Thread.sleep(150); } catch (InterruptedException ignored) {}
+          cancelled.set(true);
+        });
+        long start = android.os.SystemClock.elapsedRealtime();
+        stop.start();
+        JSONObject result = cancellable.execute("web_page", Json.obj("action", "read", "wait_text", "Never exists", "timeout_ms", 4000));
+        stop.join(1000);
+        // This helper borrowed the fixture view; do not destroy the owning Tools' view.
+        fieldPublic.set(cancellable, null); cancellable.close();
+        yes(result.optString("error").contains("Task stopped") && android.os.SystemClock.elapsedRealtime() - start < 1000);
+      });
+      tools.execute("workflow", Json.obj("action", "remove", "name", "public-search-fixture"));
+      host.ui(() -> {
+        BrowserActivity b = BrowserActivity.current.get();
+        if (b != null) b.finish();
+        return true;
+      });
     } catch (Exception e) {
       failed++;
       report.append("FAIL browser test setup: ").append(e.getMessage()).append('\n');
