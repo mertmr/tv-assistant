@@ -16,7 +16,8 @@ PASS YouTube empty upload feed is explicit failure
 PASS YouTube feed canonicalizes its unprefixed root channel ID
 PASS YouTube XML entities rejected
 PASS YouTube public channel discovery works on TV
-FAIL YouTube live upload feed returns exact playable ID: Public metadata request failed: HTTP 404
+SKIP YouTube live upload feed returns exact playable ID: YouTube's public channel upload feed has been retired and is unavailable for every channel. Use youtube_search to find a video, or open the channel's Videos page in the browser and read the newest entry from the page itself. Report this limitation instead of guessing which upload is latest.
+PASS retired upload feed reports the limitation instead of blaming the channel
 PASS socket continuation sends only new input and same response ID
 PASS socket reset uses full context without previous ID
 PASS plan references resolve arrays and scalar parameters
@@ -111,5 +112,5 @@ PASS raw public page steps batch observed snapshots without extra model calls
 PASS public readiness cancellation interrupts local polling
 PASS tool budget enforced
 
-110 passed, 1 failed
+111 passed, 0 failed
 

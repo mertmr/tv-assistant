@@ -94,12 +94,21 @@ final class Net {
     return new JSONObject(request(url, token, null, null));
   }
 
+  /** Carries the HTTP status so callers can distinguish a retired endpoint from a transient error. */
+  static final class HttpStatusException extends IOException {
+    final int status;
+
+    HttpStatusException(int status) {
+      super("Public metadata request failed: HTTP " + status);
+      this.status = status;
+    }
+  }
+
   static String publicText(String url, int limit) throws Exception {
     HttpURLConnection c = open(url, null);
     try {
       c.setRequestProperty("Accept-Language", "en-US,en;q=0.9");
-      if (c.getResponseCode() != 200)
-        throw new IOException("Public metadata request failed: HTTP " + c.getResponseCode());
+      if (c.getResponseCode() != 200) throw new HttpStatusException(c.getResponseCode());
       return read(c.getInputStream(), limit);
     } finally {
       c.disconnect();

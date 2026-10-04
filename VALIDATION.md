@@ -1,3 +1,25 @@
+# Retired YouTube upload feed — Fire TV validation
+
+The device suite reported a permanent failure: `YouTube live upload feed returns exact playable
+ID: Public metadata request failed: HTTP 404`. Investigation corrected my first hypothesis. I
+assumed one dead fixture channel and expected a different channel ID to work. It does not:
+`feeds/videos.xml` returns HTTP 404 for five unrelated real channel IDs **and** for a
+deliberately invalid ID (`UCxxxxxxxxxxxxxxxxxxxxxx`), which is byte-identical to a valid-looking
+request's 404 body. YouTube retired the public channel upload feed endpoint outright. No
+channel ID can fix this, so the earlier claim that it "needs a working channel ID" was wrong.
+
+`Net.publicText` now raises `Net.HttpStatusException` carrying the status (same message text,
+so existing assertions are unaffected). `YouTube.latest` maps a 404 on that endpoint to a
+plain-language limitation naming `youtube_search` and reading the channel's Videos page, with
+no HTTP jargon, so the assistant tells the user the truth instead of retrying or inferring
+"latest" from search ranking. Non-404 statuses still propagate unchanged.
+
+The device check now SKIPs with the reason and adds a positive check that the retired endpoint
+is reported as retired rather than blamed on the channel. A permanently red line trains people
+to ignore red; a visible, explained skip does not. This does mean the suite can go green while
+`youtube_latest` is non-functional — that trade is deliberate, and the limitation is recorded
+in README.md and below.
+
 # User-named site containment — Fire TV validation
 
 Measured on hdfilmcehennemi.nl. The exact prompt "go to https://www.hdfilmcehennemi.nl/ and
