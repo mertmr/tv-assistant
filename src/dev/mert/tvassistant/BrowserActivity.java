@@ -99,11 +99,48 @@ public final class BrowserActivity extends Activity {
     super.onDestroy();
   }
 
+  /**
+   * One label definition, shared by DOM extraction and the action stale check so an observed node
+   * always matches. Whitespace is collapsed because card titles carry newlines that would otherwise
+   * never compare equal, and class names are only a last resort.
+   */
+  static final String LABEL_JS =
+      "(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')"
+          + "||e.getAttribute('title')||e.getAttribute('name')||e.getAttribute('class')"
+          + "||'').replace(/\\s+/g,' ').trim().slice(0,180)";
+
   static final String DOM =
-      "(()=>{let i=0;const nodes=[];for(const e of"
-          + " document.querySelectorAll('a,button,input,textarea,select,h1,h2,h3,[role=heading],[role=button],[role=link],[aria-label],svg')){const"
-          + " r=e.getBoundingClientRect(),style=getComputedStyle(e);if(!r.width||!r.height||style.visibility==='hidden')continue;if(e.tagName.toLowerCase()==='svg'&&!e.getAttribute('aria-label')&&style.cursor!=='pointer')continue;if(++i>120)break;e.setAttribute('data-tvassistant-id',String(i));nodes.push({id:i,tag:e.tagName,label:(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('class')||'').slice(0,180),type:e.type||'',password:e.type==='password',disabled:!!e.disabled,value:e.type==='password'?'[redacted]':String(e.value||'').slice(0,120),href:e.tagName==='A'?e.href:''});}return"
-          + " JSON.stringify({url:location.href,title:document.title,viewport:{width:innerWidth,height:innerHeight},text:document.body.innerText.slice(0,9000),nodes});})()";
+      "(()=>{const rows=[];const label=e=>" + LABEL_JS + ";"
+          + "for(const e of document.querySelectorAll("
+          + "'a,button,input,textarea,select,h1,h2,h3,[role=heading],[role=button],[role=link],[aria-label],svg')){"
+          + "const r=e.getBoundingClientRect(),style=getComputedStyle(e);"
+          + "if(!r.width||!r.height||style.visibility==='hidden')continue;"
+          + "const tag=e.tagName,svg=tag.toLowerCase()==='svg',text=label(e);"
+          + "if(svg&&!e.getAttribute('aria-label')&&style.cursor!=='pointer')continue;"
+          // Decorative icons outnumber real controls, so rank usable controls and links ahead of
+          // everything else and let the node budget fall where the model actually looks.
+          + "const rank=svg?2:(text&&(tag==='A'||tag==='BUTTON'||tag==='INPUT'||tag==='TEXTAREA'"
+          + "||tag==='SELECT'||e.getAttribute('role')||/^H[1-4]$/.test(tag))?0:1);"
+          + "if(rows.length>=600)break;"
+          + "rows.push({rank:rank,e:e,tag:tag,text:text,type:svg?'':e.type||'',"
+          + "disabled:svg?false:!!e.disabled,value:e.type==='password'?'[redacted]':String(e.value||'').slice(0,120),"
+          + "href:tag==='A'?e.href:''});}"
+          + "rows.sort((a,b)=>a.rank-b.rank);const nodes=[];"
+          // Only non-default fields are emitted: most nodes are plain links, and the omitted
+          // booleans and empty values would otherwise dominate every page the model reads.
+          + "const node=(id,tag,text,href,type,disabled,value)=>{const o={id:id,tag:tag,label:text};"
+          + "if(href)o.href=href;if(type)o.type=type;if(disabled)o.disabled=true;"
+          + "if(value==='[redacted]')o.password=true;else if(value)o.value=value;return o;};"
+          + "for(const w of rows){if(nodes.length>=120)break;"
+          + "const id=nodes.length+1;w.e.setAttribute('data-tvassistant-id',String(id));"
+          + "nodes.push(node(id,w.tag,w.text,w.href,w.type,w.disabled,w.value));}"
+          + "return JSON.stringify({url:location.href,title:document.title,"
+          + "viewport:{width:innerWidth,height:innerHeight},"
+          // Card grids repeat a year/rating per tile; collapsing runs of whitespace keeps the same
+          // visible words in far fewer tokens. The limit stays generous so wait_text can still
+          // verify a heading that sits deep in a long page.
+          + "text:document.body.innerText.replace(/[ \\t]+/g,' ').replace(/\\n{2,}/g,'\\n').trim().slice(0,9000),"
+          + "nodes});})()";
 
   void inspect(ValueCallback<String> callback) {
     snapshot = java.util.UUID.randomUUID().toString();
@@ -122,13 +159,14 @@ public final class BrowserActivity extends Activity {
       return;
     }
     String code =
-        "(()=>{const e=document.querySelector('[data-tvassistant-id=\""
+        "(()=>{"
+            + TYPE_HELPER
+            + "const e=document.querySelector('[data-tvassistant-id=\""
             + id
             + "\"]');if(!e||!e.isConnected)return 'missing';if(e.type==='password')return"
             + " 'password';";
     code +=
-        "if(e.disabled)return 'disabled';const"
-            + " label=(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('class')||'').slice(0,180);if(label!=="
+        "if(e.disabled)return 'disabled';const label=" + LABEL_JS + ";if(label!=="
             + JSONObject.quote(expectedLabel)
             + ")return 'stale';";
     if (operation.equals("click"))
@@ -139,8 +177,18 @@ public final class BrowserActivity extends Activity {
               + " p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const"
               + " setter=Object.getOwnPropertyDescriptor(p,'value').set;setter.call(e,"
               + JSONObject.quote(text)
-              + ");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new"
-              + " Event('change',{bubbles:true}));return 'typed';";
+              + ");typeEvents(e," + JSONObject.quote(text) + ");return 'typed';";
     web.evaluateJavascript(code + "})()", callback);
   }
+
+  /**
+   * Types a whole phrase the way a person would. Sites that filter as you type listen for key
+   * events, so a bare value change leaves their results panel empty. Declared inside the action so
+   * both the public page and the internal browser share one implementation.
+   */
+  static final String TYPE_HELPER =
+      "const typeEvents=(e,text)=>{e.focus();e.dispatchEvent(new Event('input',{bubbles:true}));"
+          + "const last=text.slice(-1)||'a';for(const type of ['keydown','keypress','keyup'])"
+          + "e.dispatchEvent(new KeyboardEvent(type,{key:last,bubbles:true,cancelable:true}));"
+          + "e.dispatchEvent(new Event('change',{bubbles:true}));};";
 }

@@ -1,3 +1,8 @@
+PASS episode resolution uses the observed video ID with autoplay disabled
+PASS episode UI distinguishes requested from verified selection
+PASS episode arguments require an integer pair on a valid series
+PASS episode lookup rejects wrong, duplicate and unsafe catalog responses
+PASS episode verification requires the app, series and selected episode heading
 PASS automatic learning replaces literals and derives verification for a new query
 PASS automatic learning accepts parameterized searches without retaining their values
 PASS automatic learning rejects failed, unverified and unrelated result headings
@@ -36,4 +41,4 @@ PASS microphone PCM handles both full-scale extremes without overflow
 PASS microphone levels include quiet chunks, zeros and all samples
 PASS microphone level validation rejects invalid buffer bounds and rates
 PASS microphone source preferences are bounded and cycle safely
-38 passed, 0 failed (offline JVM checks; no device)
+43 passed, 0 failed (offline JVM checks; no device)

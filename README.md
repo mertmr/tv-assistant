@@ -34,6 +34,7 @@ for 0.2.1 because another thread owns the device.
 Examples that work without a ChatGPT connection:
 
 - “Open Stremio and find The Wire” — looks for an exact title and opens its detail page; otherwise opens search results.
+- “Open Stremio and find South Park season 3 episode 5” — resolves the catalog's actual episode ID, opens the episode directly with autoplay disabled, and verifies Stremio's series/episode headings. No season-by-season remote navigation or automatic stream selection.
 - “Open example dot com” — opens Silk if installed, otherwise the default browser.
 - “Browse example.com” — opens the assistant's internal browser.
 - “Search The Wire in Stremio” or “Find jazz on YouTube.”
@@ -62,7 +63,7 @@ The app exposes **40 validated functions**, several supporting multiple actions:
 | Local plans | Batch up to eight allowlisted tools with result references and parameters; resolve fresh scoped labels; reuse verified workflows, including parameterized public searches, and stop on drift |
 | Apps and links | List installed apps, launch an app, search Stremio/YouTube/Netflix or a supported Android search activity, open HTTPS links in Silk/system/internal browser, web/video search |
 | YouTube | Search public channel/video metadata, read newest uploads from a channel feed, request playback of an exact video, and check matching player-session evidence when available |
-| Media | Search public Cinemeta movie/series metadata, open Stremio detail pages, list active sessions, play/pause/stop/next/previous/seek/rewind/fast-forward when supported |
+| Media | Search public Cinemeta movie/series metadata, open Stremio title or verified episode pages without autoplay, list active sessions, play/pause/stop/next/previous/seek/rewind/fast-forward when supported |
 | TV | Read/change/mute Android media volume; open general/network/Bluetooth/display/sound/app settings; read device/connectivity information |
 | Screen vision | Optional user-approved screen session, screenshot inspection, taps and swipes using image coordinates, bounded batches of visible keyboard keys; local history retains only the newest screenshot; WebSocket chains reset after at most three images |
 | Native navigation | Read visible screen labels, click identified nodes, type in non-password fields, scroll, move focus/select, supported Back/Home/Recents/notification actions |

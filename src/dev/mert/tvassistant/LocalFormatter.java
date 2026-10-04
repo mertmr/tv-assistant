@@ -35,6 +35,16 @@ final class LocalFormatter {
               + "\nPublished: "
               + latest.optString("published");
     }
+    if (tool.equals("media_details") && result.has("episode")) {
+      JSONObject episode = result.optJSONObject("episode");
+      if (episode != null) {
+        String label = episode.optString("title") + " · S" + episode.optInt("season")
+            + "E" + episode.optInt("episode") + " · " + episode.optString("episode_title");
+        return result.optBoolean("episode_verified") ? "Episode selected: " + label
+            : "Requested episode: " + label + "\nSelection was not verified. "
+                + result.optString("observation_error", result.optString("verification_note", "Check the TV screen."));
+      }
+    }
     if (result.has("launched")) return "Opened the destination. Check the TV screen.";
     if (result.has("performed"))
       return result.optBoolean("performed", false) || result.opt("performed") instanceof String

@@ -86,6 +86,7 @@ final class ActionPlan {
   static boolean failed(JSONObject result) {
     return result.has("error") || result.has("observation_error")
         || (result.has("text_verified") && !result.optBoolean("text_verified"))
+        || (result.has("episode_verified") && !result.optBoolean("episode_verified"))
         || (result.has("performed") && Boolean.FALSE.equals(result.opt("performed")))
         || (result.has("keys_requested") && result.optInt("keys_requested") != result.optInt("keys_delivered"));
   }
