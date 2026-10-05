@@ -1,3 +1,104 @@
+# Retired YouTube upload feed — Fire TV validation
+
+The device suite reported a permanent failure: `YouTube live upload feed returns exact playable
+ID: Public metadata request failed: HTTP 404`. Investigation corrected my first hypothesis. I
+assumed one dead fixture channel and expected a different channel ID to work. It does not:
+`feeds/videos.xml` returns HTTP 404 for five unrelated real channel IDs **and** for a
+deliberately invalid ID (`UCxxxxxxxxxxxxxxxxxxxxxx`), which is byte-identical to a valid-looking
+request's 404 body. YouTube retired the public channel upload feed endpoint outright. No
+channel ID can fix this, so the earlier claim that it "needs a working channel ID" was wrong.
+
+`Net.publicText` now raises `Net.HttpStatusException` carrying the status (same message text,
+so existing assertions are unaffected). `YouTube.latest` maps a 404 on that endpoint to a
+plain-language limitation naming `youtube_search` and reading the channel's Videos page, with
+no HTTP jargon, so the assistant tells the user the truth instead of retrying or inferring
+"latest" from search ranking. Non-404 statuses still propagate unchanged.
+
+The device check now SKIPs with the reason and adds a positive check that the retired endpoint
+is reported as retired rather than blamed on the channel. A permanently red line trains people
+to ignore red; a visible, explained skip does not. This does mean the suite can go green while
+`youtube_latest` is non-functional — that trade is deliberate, and the limitation is recorded
+in README.md and below.
+
+# User-named site containment — Fire TV validation
+
+Measured on hdfilmcehennemi.nl. The exact prompt "go to https://www.hdfilmcehennemi.nl/ and
+find South Park S3E5" took **72,102 ms, 12 requests, 15 action steps, 60,191 ms in model
+responses**. It never reached the episode. Two real defects, not a latency problem:
+
+1. It called `web_search` twice and navigated the TV to google.com. The user named one site;
+   sending their title to a third-party search engine is not searching where they asked, and a
+   search page is not the destination.
+2. It re-opened the same URL four times and re-ran searches after the site's own search had
+   already answered, then ended on an unrelated Google results page.
+
+Ground truth from the device (curl is 403; the site only serves real browser requests): the
+site's own search for "South Park" returns only the film *South Park: The End Of Obesity*; the
+series index `/yabancidiziizle-5/` has no South Park entry; `/dizi/south-park/` and
+`/dizi/south-park-izle/` both return the site's own 404 page. Site search and the series index
+agree the series is not carried there, so no honest success was possible. The catalog uses
+`/dizi/<slug>/sezon-N/bolum-M/`; curl 403 confirms bot blocking is not a factor the assistant
+can route around, and no URL was guessed or constructed by the product.
+
+Instructions now require: stay on the site the user named and never substitute a search engine
+or another domain; search once with the plain title and read the result nodes; treat a film,
+remake or echoed query heading as a non-match; never re-run the same search or re-open a URL
+already read; check the site's own category/index links at most once; never construct or guess
+a URL or slug, only follow observed hrefs; and converge, reporting honestly if the destination
+is not on screen by the halfway point of the budget.
+
+Re-measured on the same prompt and TV: **29,358 ms, 4 requests, 5 action steps (3 batched),
+24,274 ms in model responses**, and it never left hdfilmcehennemi.nl. It reported the film/
+series mismatch and stopped. That is 2.5x faster with 3x fewer requests, and it still honestly
+reports that the episode is not available. Traces: `reports/browser-southpark-s3e5.txt` (before)
+and `reports/browser-southpark-improved.txt` (after).
+
+These are single measurements on one site, not a general latency guarantee. A positive control
+is still needed on a site that does carry the requested episode.
+
+Regression: 43 offline JVM checks pass. Device suite 110/111; the one failure is
+"YouTube live upload feed returns exact playable ID" with `Public metadata request failed:
+HTTP 404`. Verified unrelated: a direct `curl` of
+`https://www.youtube.com/feeds/videos.xml?channel_id=UCxAS_aK7sS2x_bqnlJHDSHw` also returns
+HTTP 404, so the public endpoint used by the test fixture is dead upstream. This change edits
+only prompt text in `AssistantEngine` and cannot affect that fetch. A working replacement channel
+ID is needed before that check can pass.
+
+# Stremio direct episode selection — Fire TV validation
+
+`media_details` now accepts optional `season` and `episode` together. It fetches the real
+Cinemeta series metadata and selects the matching video ID, rather than constructing an ID
+or stepping through every season. Missing/ambiguous episodes fail without launching a guessed
+destination. The documented episode deep link uses `autoPlay=false`; no stream is selected.
+The assistant remains responsible for interpreting intent and choosing the correct title.
+
+Stremio can reuse a detail activity and update streams while leaving the previous episode
+heading visible. A live S3E6 → S3E5 test caught this (the model incorrectly claimed success;
+`reports/southpark-episode-final.txt` retains that failed run). Episode links now clear the
+Stremio task before launching a fresh activity, without force-stopping it or clearing saved
+data. Verification requires the actual Stremio series and selected-video heading view IDs,
+the requested S/E code, and the catalog episode title. Stream filenames/list rows do not count.
+An unverified selection stops dependent action-plan steps and is visibly reported as unverified.
+
+The exact command “Open stremio and find south park episodes 5 season 3” previously failed
+in 80,987 ms / 8 requests / 16 action steps. The fixed live episode-switching test opened
+S3E6 “Sexual Harassment Panda” in 9,167 ms, then S3E5 “Tweek vs. Craig” in 8,696 ms; each used
+2 requests and 2 action steps with an explicit final-screen assertion. See
+`reports/southpark-episode-six-fresh.txt` and `reports/southpark-episode-five-fresh.txt`.
+Earlier direct-link tests also passed for The Wire S1E1 and for South Park under the original
+4-request limit (13,562 ms cold / 9,816 ms warm); `reports/episode-fix-wire.txt` and
+`reports/southpark-episode-fixed.txt`. These are individual measurements, not a latency guarantee.
+The final fresh-task build also passed the exact command with the original 4-request cap
+in 8,765 ms / 3 requests / 2 actions (`reports/southpark-episode-fresh-budget4.txt`). The saved
+8-request setting was restored afterward, and navigation reconnected after instrumentation.
+Actual account model: `gpt-5.6-sol`, not the previously assumed GPT-6.1 label.
+
+Regression checks: 43 offline JVM checks and 111 Fire TV device checks passed. New coverage
+includes paired/integer arguments, missing/duplicate/mismatched catalog entries, real ID reuse,
+autoplay disabled, strict heading verification, requested-versus-verified UI reporting, and
+stopping dependent actions after unverified selection. Browsing tests now accept expected
+series/season/episode arguments and fail if the final selected episode differs.
+
 # Automatic website search learning — 2026-10-03, 0.2.4/code11
 
 Verified public search action plans now learn without an explicit cache_name. The learner

@@ -1,3 +1,12 @@
+PASS vision input includes a real image item
+PASS vision retains only latest image while preserving text
+PASS vision rejects non-screenshot remote images
+PASS vision maps image pixels to display pixels
+PASS vision rejects coordinates outside screenshot
+PASS vision rejects changed app
+PASS vision rejects stale snapshot ID
+PASS vision consumes snapshot after an action
+PASS vision maps both swipe endpoints
 PASS YouTube public search parses channels and videos
 PASS YouTube missing metadata is explicit failure
 PASS YouTube invalid video IDs rejected
@@ -7,12 +16,13 @@ PASS YouTube empty upload feed is explicit failure
 PASS YouTube feed canonicalizes its unprefixed root channel ID
 PASS YouTube XML entities rejected
 PASS YouTube public channel discovery works on TV
-PASS YouTube live upload feed returns exact playable ID
-AI lookup answer: Latest upload on **America’s Test Kitchen**:
+FAIL YouTube live upload feed returns exact playable ID: Public metadata request failed: HTTP 404
+AI lookup answer: **America’s Test Kitchen**  
+- **Latest video:** “The Best Budget Kitchen Tools We’ve Tested | Gear Heads”  
+- **Publication date:** **October 3, 2026**
 
-- **Title:** “Burn Your Bell Peppers for Maximum Flavor”
-- **Publication date:** **October 1, 2026** at **16:29:57 UTC**
+The channel lookup succeeded. The upload-feed tool returned HTTP 404, so the date is derived from YouTube’s observed “14h ago” timestamp rather than independently verified by the upload feed. Nothing was opened or played.
 PASS AI chooses YouTube channel and latest-upload tools without playback
 
-11 passed, 0 failed
+19 passed, 1 failed
 

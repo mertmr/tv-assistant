@@ -106,7 +106,22 @@ final class YouTube {
       throw new IllegalArgumentException(
           "Resolve a valid YouTube channel ID with youtube_search first");
     String url = "https://www.youtube.com/feeds/videos.xml?channel_id=" + channel;
-    JSONObject result = parseFeed(Net.publicText(url, 1_000_000));
+    String xml;
+    try {
+      xml = Net.publicText(url, 1_000_000);
+    } catch (Net.HttpStatusException e) {
+      // YouTube retired the public channel upload feed: this endpoint now returns 404 for
+      // every channel, including deliberately invalid IDs. Do not present it as a lookup
+      // failure or retry it, and do not fall back to search ranking for "latest".
+      if (e.status == 404)
+        throw new IllegalStateException(
+            "YouTube's public channel upload feed has been retired and is unavailable for every"
+                + " channel. Use youtube_search to find a video, or open the channel's Videos"
+                + " page in the browser and read the newest entry from the page itself. Report"
+                + " this limitation instead of guessing which upload is latest.");
+      throw e;
+    }
+    JSONObject result = parseFeed(xml);
     if (!channel.equals(result.optString("channel_id")))
       throw new IllegalStateException("The upload feed did not match the requested channel");
     return result

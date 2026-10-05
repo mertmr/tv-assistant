@@ -32,9 +32,33 @@ if [ "${TV_TEST_GROUP:-}" = "emulator-native" ]; then
 elif [ "${TV_TEST_GROUP:-}" = "emulator" ]; then
  test_result="${TV_TEST_REPORT:-$workspace_root/reports/emulator-api34-results.txt}"
  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group emulator dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+elif [ "${TV_TEST_GROUP:-}" = "device-state" ]; then
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/device-state.txt}"
+ if [ -n "${TV_ROUNDS:-}" ]; then
+  [[ "$TV_ROUNDS" =~ ^([1-9]|1[0-2])$ ]] || { echo 'TV_ROUNDS must be 1–12'; exit 1; }
+  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group device-state -e rounds "$TV_ROUNDS" dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+ else
+  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group device-state dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+ fi
+elif [ "${TV_TEST_GROUP:-}" = "probe" ]; then
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/probe-results.txt}"
+ # adb shell re-splits its arguments, so the whole remote command is quoted once here.
+ probe_cmd="am instrument -w -e group probe -e url $(printf '%q' "${TV_URL:-https://www.hdfilmcehennemi.nl/}") -e query $(printf '%q' "${TV_QUERY:-succession}") dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner"
+ adb -P "$test_adb_port" -s "$test_device" shell "$probe_cmd" | tee "$test_result"
 elif [ "${TV_TEST_GROUP:-}" = "benchmark" ]; then
- test_result="$workspace_root/reports/benchmark-results.txt"
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/benchmark-results.txt}"
  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group benchmark dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
+elif [ "${TV_TEST_GROUP:-}" = "browse" ]; then
+ test_result="${TV_TEST_REPORT:-$workspace_root/reports/browse-results.txt}"
+ # adb shell re-splits its arguments, so the whole remote command is quoted once here.
+ [[ "${TV_REPEATS:-1}" =~ ^([1-9]|10)$ ]] || { echo 'TV_REPEATS must be 1–10'; exit 1; }
+ browse_cmd="am instrument -w -e group browse -e prompt $(printf '%q' "${TV_PROMPT:-}") -e repeats ${TV_REPEATS:-1}"
+ if [ -n "${TV_EXPECT_SERIES:-}" ]; then
+  [[ "${TV_EXPECT_SEASON:-}" =~ ^[0-9]{1,5}$ && "${TV_EXPECT_EPISODE:-}" =~ ^[0-9]{1,5}$ ]] || { echo 'Expected season/episode must be integers'; exit 1; }
+  browse_cmd+=" -e expect_series $(printf '%q' "$TV_EXPECT_SERIES") -e expect_season $TV_EXPECT_SEASON -e expect_episode $TV_EXPECT_EPISODE"
+ fi
+ browse_cmd+=" dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner"
+ adb -P "$test_adb_port" -s "$test_device" shell "$browse_cmd" | tee "$test_result"
 elif [ "${TV_TEST_GROUP:-}" = "youtube" ]; then
  test_result="$workspace_root/reports/tv-assistant-youtube-test-results.txt"
  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w -e group youtube dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
@@ -42,4 +66,8 @@ else
  test_result="$workspace_root/reports/tv-assistant-test-results.txt"
  adb -P "$test_adb_port" -s "$test_device" shell am instrument -w dev.mert.tvassistant.tests/dev.mert.tvassistant.TestRunner | tee "$test_result"
 fi
-rg --quiet '^[0-9]+ passed, 0 failed' "$test_result"
+if [ "${TV_TEST_GROUP:-}" = "device-state" ]; then
+ rg --quiet '^Request limit:' "$test_result"
+else
+ rg --quiet '^[0-9]+ passed, 0 failed' "$test_result"
+fi

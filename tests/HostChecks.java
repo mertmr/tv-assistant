@@ -42,7 +42,82 @@ public final class HostChecks {
     return Json.obj("stopped_early", false, "completed_steps", 3,
         "results", Json.arr(Json.obj("performed", true), Json.obj("performed", true, "text_verified", true), Json.obj("verified", true)));
   }
+  static JSONObject seriesFixture() throws Exception {
+    return Json.obj("id", "tt0121955", "type", "series", "name", "South Park", "videos", Json.arr(
+        Json.obj("id", "catalog:real-episode", "season", 3, "episode", 5, "name", "Tweek vs. Craig"),
+        Json.obj("id", "catalog:other", "season", 3, "episode", 6, "name", "Other episode")));
+  }
+
   public static void main(String[] args) throws Exception {
+    check("episode resolution uses the observed video ID with autoplay disabled", () -> {
+      JSONObject episode = MediaEpisode.resolve(seriesFixture(), "tt0121955", Json.obj("season", 3, "episode", 5));
+      yes(episode.getString("video_id").equals("catalog:real-episode"));
+      yes(episode.getString("episode_title").equals("Tweek vs. Craig"));
+      yes(episode.getString("detail_url").equals("stremio:///detail/series/tt0121955/catalog%3Areal-episode?autoPlay=false"));
+      MediaEpisode.validate("movie", "tt0121955", Json.obj());
+      rejects(() -> MediaEpisode.resolve(seriesFixture(), "tt0121955", Json.obj("season", 3, "episode", 99)));
+    });
+    check("episode UI distinguishes requested from verified selection", () -> {
+      JSONObject episode = MediaEpisode.resolve(seriesFixture(), "tt0121955", Json.obj("season", 3, "episode", 5));
+      JSONObject result = Json.obj("launched", true, "episode", episode, "episode_verified", false,
+          "observation_error", "Navigation is disconnected");
+      String unverified = LocalFormatter.format("media_details", result);
+      yes(unverified.startsWith("Requested episode:") && unverified.contains("Navigation is disconnected"));
+      yes(!unverified.contains("Episode selected:"));
+      result.remove("observation_error");
+      yes(ActionPlan.failed(result));
+      int[] calls = {0};
+      yes(ActionPlan.run(plan(), Json.obj(), runner(calls, result, false)).optBoolean("stopped_early"));
+      yes(calls[0] == 1);
+      yes(LocalFormatter.format("media_details", result.put("episode_verified", true)).startsWith("Episode selected:"));
+      yes(!ActionPlan.failed(result));
+    });
+    check("episode arguments require an integer pair on a valid series", () -> {
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", 3)));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("episode", 5)));
+      rejects(() -> MediaEpisode.validate("movie", "tt0121955", Json.obj("season", 3, "episode", 5)));
+      rejects(() -> MediaEpisode.validate("other", "tt0121955", Json.obj()));
+      rejects(() -> MediaEpisode.validate("series", "../wrong", Json.obj()));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", "3", "episode", 5)));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", 3.5, "episode", 5)));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", -1, "episode", 5)));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", 3, "episode", 0)));
+      rejects(() -> MediaEpisode.validate("series", "tt0121955", Json.obj("season", 3, "episode", 10001)));
+      MediaEpisode.validate("series", "tt0121955", Json.obj("season", 0, "episode", 1));
+    });
+    check("episode lookup rejects wrong, duplicate and unsafe catalog responses", () -> {
+      JSONObject coordinates = Json.obj("season", 3, "episode", 5);
+      rejects(() -> MediaEpisode.resolve(seriesFixture().put("id", "tt0306414"), "tt0121955", coordinates));
+      rejects(() -> MediaEpisode.resolve(seriesFixture().put("type", "movie"), "tt0121955", coordinates));
+      JSONObject duplicate = seriesFixture();
+      duplicate.getJSONArray("videos").put(duplicate.getJSONArray("videos").getJSONObject(0));
+      rejects(() -> MediaEpisode.resolve(duplicate, "tt0121955", coordinates));
+      for (String id : new String[] {"", "../escape", "x?autoPlay=true", "javascript:alert(1)"}) {
+        JSONObject bad = seriesFixture();
+        bad.getJSONArray("videos").getJSONObject(0).put("id", id);
+        rejects(() -> MediaEpisode.resolve(bad, "tt0121955", coordinates));
+      }
+    });
+    check("episode verification requires the app, series and selected episode heading", () -> {
+      JSONObject episode = MediaEpisode.resolve(seriesFixture(), "tt0121955", Json.obj("season", 3, "episode", 5));
+      JSONObject screen = Json.obj("package", "com.stremio.one", "nodes", Json.arr(
+          Json.obj("view_id", "com.stremio.one:id/meta_details_label", "text", "South Park (1997–)"),
+          Json.obj("view_id", "com.stremio.one:id/meta_details_video_label", "text", "S03E05 - Jun 24, 1999 - Tweek vs. Craig")));
+      yes(MediaEpisode.verified(screen, episode));
+      yes(!MediaEpisode.verified(new JSONObject(screen.toString()).put("package", "other.app"), episode));
+      yes(!MediaEpisode.verified(new JSONObject(screen.toString()).put("error", "disconnected"), episode));
+      JSONObject listItem = new JSONObject(screen.toString());
+      listItem.getJSONArray("nodes").getJSONObject(1).put("view_id", "episode_list_item");
+      yes(!MediaEpisode.verified(listItem, episode));
+      JSONObject wrongSeries = new JSONObject(screen.toString());
+      wrongSeries.getJSONArray("nodes").getJSONObject(0).put("text", "Wrong series (1997–)");
+      yes(!MediaEpisode.verified(wrongSeries, episode));
+      for (String heading : new String[] {"S03E06 - Tweek vs. Craig", "S13E05 - Tweek vs. Craig",
+          "S03E050 - Tweek vs. Craig", "E05", "S03E05 - Wrong episode", "Synopsis mentioning S03E05 - Tweek vs. Craig"}) {
+        screen.getJSONArray("nodes").getJSONObject(1).put("text", heading);
+        yes(!MediaEpisode.verified(screen, episode));
+      }
+    });
     check("automatic learning replaces literals and derives verification for a new query", () -> {
       JSONObject learned = LearnedSearch.learn(search("The Wire", "Results: The Wire"), Json.obj(), searchResult());
       yes(learned != null && !learned.toString().contains("The Wire"));

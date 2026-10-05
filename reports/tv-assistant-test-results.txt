@@ -16,7 +16,8 @@ PASS YouTube empty upload feed is explicit failure
 PASS YouTube feed canonicalizes its unprefixed root channel ID
 PASS YouTube XML entities rejected
 PASS YouTube public channel discovery works on TV
-PASS YouTube live upload feed returns exact playable ID
+SKIP YouTube live upload feed returns exact playable ID: YouTube's public channel upload feed has been retired and is unavailable for every channel. Use youtube_search to find a video, or open the channel's Videos page in the browser and read the newest entry from the page itself. Report this limitation instead of guessing which upload is latest.
+PASS retired upload feed reports the limitation instead of blaming the channel
 PASS socket continuation sends only new input and same response ID
 PASS socket reset uses full context without previous ID
 PASS plan references resolve arrays and scalar parameters
@@ -25,6 +26,7 @@ PASS failed delivery stops dependent plan actions
 PASS cancelled plan executes no steps
 PASS plan enforces remaining tool budget before actions
 PASS fresh UI target rejects duplicate labels and password nodes
+PASS preferred model prefers the newest Sol and falls back safely
 PASS fresh UI scope rejects changed app and browser origin
 PASS cache excludes raw coordinate snapshots and typing
 PASS connected requests always use AI
@@ -59,6 +61,8 @@ PASS intent URL rejected
 PASS auth URL excluded from AI browser
 PASS password preference rejected
 PASS bad media identifier rejected
+PASS media episode schema requires both coordinates
+PASS media episode schema rejects movies and fractional coordinates
 PASS sensitive action detection
 PASS SSE completed
 PASS SSE restores streamed tool calls from empty terminal output
@@ -91,7 +95,22 @@ PASS browser click
 PASS browser action verified in DOM
 PASS batched real WebView actions and verified workflow reuse
 PASS browser node filtering
+PASS isolated public page extracts DOM without launching an activity
+PASS public TV viewport exposes desktop search controls
+PASS public typing dispatches input and change and yields a real result link
+PASS public stale, password, and disabled actions are rejected
+PASS public SVG controls are observed and clicked with fresh identity
+Public search batch: 835 ms; fixture delay650ms
+PASS public search batches fresh actions and waits for delayed real results
+PASS cached public search uses new parameters without retaining typed values
+PASS successful literal public searches learn without an explicit cache name
+PASS automatically learned searches replay with query only and verify fresh results
+PASS public search drift and missing parameters stop before later actions
+PASS public label actions reject changed origin and ambiguity
+PASS public readiness stops promptly and cannot verify an input value
+PASS raw public page steps batch observed snapshots without extra model calls
+PASS public readiness cancellation interrupts local polling
 PASS tool budget enforced
 
-94 passed, 0 failed
+111 passed, 0 failed
 

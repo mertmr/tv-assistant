@@ -52,15 +52,15 @@ final class PublicBrowser {
       return;
     }
     String code =
-        "(()=>{const e=document.querySelector('[data-tvassistant-id=\""
+        "(()=>{try{"
+            + BrowserActivity.TYPE_HELPER
+            + "const e=document.querySelector('[data-tvassistant-id=\""
             + id
             + "\"]');if(!e||!e.isConnected)return 'missing';if(e.type==='password')return"
             + " 'password';";
     code +=
-        "if(e.disabled||e.readOnly)return 'disabled';const"
-            + " label=(e.innerText||e.getAttribute('aria-label')||e.getAttribute('placeholder')||e.getAttribute('title')||e.getAttribute('class')||'').slice(0,180);if(label!=="
-            + JSONObject.quote(expectedLabel)
-            + ")return 'stale';";
+        "if(e.disabled||e.readOnly)return 'disabled';const label=" + BrowserActivity.LABEL_JS
+            + ";if(label!==" + JSONObject.quote(expectedLabel) + ")return 'stale';";
     if (operation.equals("click"))
       code += "e.scrollIntoView({block:'center'});if(typeof e.click==='function')e.click();else e.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true,view:window}));return 'clicked';";
     else
@@ -69,8 +69,7 @@ final class PublicBrowser {
               + " p=e.tagName==='TEXTAREA'?HTMLTextAreaElement.prototype:HTMLInputElement.prototype;const"
               + " setter=Object.getOwnPropertyDescriptor(p,'value').set;setter.call(e,"
               + JSONObject.quote(text)
-              + ");e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new"
-              + " Event('change',{bubbles:true}));return 'typed';";
-    web.evaluateJavascript(code + "})()", callback);
+              + ");typeEvents(e," + JSONObject.quote(text) + ");return 'typed';";
+    web.evaluateJavascript(code + "}catch(err){return 'js:'+(err&&err.message||err);}})()", callback);
   }
 }
