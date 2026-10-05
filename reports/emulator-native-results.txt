@@ -12,3 +12,4 @@ PASS visual tap opens the native dialog and returns a fresh frame
 PASS target result exposes a usable fresh native snapshot with vision active
 
 12 passed, 0 failed
+
