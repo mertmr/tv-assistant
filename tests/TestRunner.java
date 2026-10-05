@@ -630,8 +630,11 @@ public final class TestRunner extends Instrumentation {
       });
       tools.execute("navigate", Json.obj("direction", "back"));
       test("target result exposes a usable fresh native snapshot with vision active", () -> {
+        // Clearing is intentionally not a top-level nav action; it lives behind History.
+        tools.execute("ui_target", Json.obj("scope", "native",
+            "context", getTargetContext().getPackageName(), "label", "History", "action", "click"));
         JSONObject result = tools.execute("ui_target", Json.obj("scope", "native",
-            "context", getTargetContext().getPackageName(), "label", "Clear", "action", "click"));
+            "context", getTargetContext().getPackageName(), "label", "Clear conversation", "action", "click"));
         JSONObject nativeScreen = result.getJSONObject("native_screen");
         JSONObject appsNode = Tools.uniqueTarget(nativeScreen, "Apps", false, false, false);
         JSONObject clicked = tools.execute("screen_click", Json.obj("snapshot", nativeScreen.getString("snapshot"), "id", appsNode.getInt("id")));
